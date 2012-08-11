@@ -42,7 +42,7 @@ static ngx_int_t ngx_http_gm_init(ngx_conf_t *cf);
 static ngx_command_t  ngx_http_gm_commands[] = {
 
     { ngx_string("gm"),
-      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE123,
+      NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_http_gm_gm,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
@@ -60,14 +60,14 @@ static ngx_command_t  ngx_http_gm_commands[] = {
 
 
 static ngx_http_module_t  ngx_http_gm_module_ctx = {
-    NULL,                                  /* preconfiguration */
-    ngx_http_gm_init,               /* postconfiguration */
+    NULL,                        /* preconfiguration */
+    ngx_http_gm_init,            /* postconfiguration */
 
-    NULL,                                  /* create main configuration */
-    NULL,                                  /* init main configuration */
+    NULL,                        /* create main configuration */
+    NULL,                        /* init main configuration */
 
-    NULL,                                  /* create server configuration */
-    NULL,                                  /* merge server configuration */
+    NULL,                        /* create server configuration */
+    NULL,                        /* merge server configuration */
 
     ngx_http_gm_create_conf,     /* create location configuration */
     ngx_http_gm_merge_conf       /* merge location configuration */
@@ -78,14 +78,14 @@ ngx_module_t  ngx_http_gm_module = {
     NGX_MODULE_V1,
     &ngx_http_gm_module_ctx,        /* module context */
     ngx_http_gm_commands,           /* module directives */
-    NGX_HTTP_MODULE,                       /* module type */
-    NULL,                                  /* init master */
-    NULL,                                  /* init module */
-    NULL,                                  /* init process */
-    NULL,                                  /* init thread */
-    NULL,                                  /* exit thread */
-    NULL,                                  /* exit process */
-    NULL,                                  /* exit master */
+    NGX_HTTP_MODULE,                /* module type */
+    NULL,                           /* init master */
+    NULL,                           /* init module */
+    NULL,                           /* init process */
+    NULL,                           /* init thread */
+    NULL,                           /* exit thread */
+    NULL,                           /* exit process */
+    NULL,                           /* exit master */
     NGX_MODULE_V1_PADDING
 };
 
@@ -626,6 +626,8 @@ ngx_http_gm_merge_conf(ngx_conf_t *cf, void *parent, void *child)
         conf->cmds = prev->cmds;
     }
 
+    ngx_conf_merge_size_value(conf->buffer_size, prev->buffer_size,
+                              4 * 1024 * 1024);
     return NGX_CONF_OK;
 }
 
@@ -633,9 +635,59 @@ ngx_http_gm_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 static char *
 ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    //ngx_http_gm_conf_t *imcf = conf;
+    ngx_http_gm_conf_t *gmcf = conf;
+
+    ngx_str_t                         *value;
+    ngx_http_gm_cmd                   *gm_cmd;
+    ngx_int_t                          n;
+    ngx_uint_t                         i;
+
+    ngx_http_complex_value_t           cv;
+    ngx_http_compile_complex_value_t   ccv;
+
+    ngx_array_t                     *args;
+
+    args  = cf->args;
+    value = cf->args->elts;
+
+    i = 1;
+
+    if (args->nelts < 2) {
+        return NGX_CONF_ERROR;
+    }
+
+    if (!gmcf->cmds) {
+        gmcf->cmds = ngx_array_create(cf->pool, 1, sizeof(ngx_http_gm_cmd));
+        if (gmcf->cmds == NULL) {
+            goto failed;
+        }
+        gm_cmd = gmcf->cmds->elts;
+    } else {
+        gm_cmd = ngx_array_push(gmcf->cmds);
+        if (gm_cmd == NULL) {
+            goto failed;
+        }
+    }
+
+    if (ngx_strcmp(value[i].data, "convert") == 0) {
+        gm_cmd->type = NGX_HTTP_GM_CONVERT_CMD;
+    } else if (ngx_strcmp(value[i].data, "composite") == 0) {
+        gm_cmd->type = NGX_HTTP_GM_COMPOSITE_CMD;
+    } else {
+        goto failed;
+    }
+
+    for (i = 2; i < args->nelts; ++i) {
+    }
 
     return NGX_CONF_OK;
+
+failed:
+
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid parameter \"%V\"",
+                       &value[i]);
+
+    return NGX_CONF_ERROR;
 }
 
 static ngx_int_t
