@@ -3,6 +3,7 @@ t/servroot/
 *~
 *.swp
 build
+work
 go
 genmobi.sh
 tags

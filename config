@@ -1,0 +1,27 @@
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_incs="#include <magick/api.h>"
+ngx_feature_test="resize"
+
+# auto-discovery
+ngx_feature="libGraphicsMagick library"
+ngx_feature_path=
+ngx_feature_libs="`GraphicsMagick-config --ldflags --libs`"
+
+. auto/feature
+
+if [ $ngx_found = no ]; then
+    # Debian
+    ngx_feature="libGraphicsMagick library in /usr/local/"
+    ngx_feature_path="-I/usr/local/include/GraphicsMagick/"
+    ngx_feature_libs="-L/usr/local/lib/ -lGraphicsMagick -lz -lm -lgomp -lpthread"
+    . auto/feature
+fi
+
+
+ngx_addon_name=ngx_http_gm_filter_module
+HTTP_AUX_FILTER_MODULES="$HTTP_AUX_FILTER_MODULES ngx_http_gm_filter_module"
+NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_gm_filter_module.c"
+NGX_ADDON_DEPS="$NGX_ADDON_DEPS $ngx_addon_dir/src/ddebug.h $ngx_addon_dir/src/ngx_http_gm_filter_module.h"
+
+CFLAGS="$CFLAGS `GraphicsMagick-config --cppflags`"
