@@ -1,0 +1,10 @@
+.svn
+t/servroot/
+*~
+*.swp
+build
+go
+genmobi.sh
+tags
+all
+releng
