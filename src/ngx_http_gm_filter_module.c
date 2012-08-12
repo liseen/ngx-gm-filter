@@ -121,7 +121,7 @@ ngx_http_gm_header_filter(ngx_http_request_t *r)
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_gm_module);
 
-    if (!conf->cmds) {
+    if (conf->cmds == NULL) {
         return ngx_http_next_header_filter(r);
     }
 
@@ -603,16 +603,16 @@ ngx_http_gm_value(ngx_str_t *value)
 static void *
 ngx_http_gm_create_conf(ngx_conf_t *cf)
 {
-    ngx_http_gm_conf_t  *conf;
+    ngx_http_gm_conf_t  *gmcf;
 
-    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_gm_conf_t));
-    if (conf == NULL) {
+    gmcf = ngx_pcalloc(cf->pool, sizeof(ngx_http_gm_conf_t));
+    if (gmcf == NULL) {
         return NULL;
     }
 
-    conf->buffer_size = NGX_CONF_UNSET_SIZE;
+    gmcf->buffer_size = NGX_CONF_UNSET_SIZE;
 
-    return conf;
+    return gmcf;
 }
 
 
@@ -622,7 +622,7 @@ ngx_http_gm_merge_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_http_gm_conf_t *prev = parent;
     ngx_http_gm_conf_t *conf = child;
 
-    if (!conf->cmds && prev->cmds) {
+    if (conf->cmds == NULL && prev->cmds != NULL) {
         conf->cmds = prev->cmds;
     }
 
@@ -638,7 +638,11 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_http_gm_conf_t *gmcf = conf;
 
     ngx_str_t                         *value;
+
     ngx_http_gm_cmd                   *gm_cmd;
+    ngx_http_gm_option                *gm_option;
+    ngx_str_t                         *gm_arg;
+
     ngx_int_t                          n;
     ngx_uint_t                         i;
 
@@ -656,17 +660,16 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    if (!gmcf->cmds) {
+    if (gmcf->cmds == NULL) {
         gmcf->cmds = ngx_array_create(cf->pool, 1, sizeof(ngx_http_gm_cmd));
         if (gmcf->cmds == NULL) {
             goto failed;
         }
-        gm_cmd = gmcf->cmds->elts;
-    } else {
-        gm_cmd = ngx_array_push(gmcf->cmds);
-        if (gm_cmd == NULL) {
-            goto failed;
-        }
+    }
+
+    gm_cmd = ngx_array_push(gmcf->cmds);
+    if (gm_cmd == NULL) {
+        goto alloc_failed;
     }
 
     if (ngx_strcmp(value[i].data, "convert") == 0) {
@@ -677,10 +680,51 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         goto failed;
     }
 
+    gm_cmd->options = ngx_array_create(cf->pool, 1, sizeof(ngx_http_gm_option));
+    if (gm_cmd->options == NULL) {
+        goto alloc_failed;
+    }
+
+    gm_option == NULL;
     for (i = 2; i < args->nelts; ++i) {
+        if (ngx_strncmp(value[i].data, "-", 1) == 0) {
+            gm_option = ngx_array_push(gm_cmd->options);
+            if (gm_option == NULL) {
+                goto alloc_failed;
+            }
+
+            if (ngx_strcmp(value[i].data, "-resize") == 0) {
+                gm_option->type = NGX_HTTP_GM_RESIZE_OPTION;
+            } else {
+                goto failed;
+            }
+
+            gm_option->args = ngx_array_create(cf->pool, 1, sizeof(ngx_str_t));
+            if (gm_option->args == NULL) {
+                goto alloc_failed;
+            }
+        } else {
+            if (gm_option == NULL) {
+                goto failed;
+            }
+
+            gm_arg = ngx_array_push(gm_option->args);
+            if (gm_arg == NULL) {
+                goto alloc_failed;
+            }
+
+            gm_arg->data = value[i].data;
+            gm_arg->len = value[i].len;
+        }
     }
 
     return NGX_CONF_OK;
+
+alloc_failed:
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "alloc failed \"%V\"",
+                       &value[i]);
+
+    return NGX_CONF_ERROR;
 
 failed:
 
