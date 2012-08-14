@@ -22,6 +22,11 @@ fi
 ngx_addon_name=ngx_http_gm_module
 HTTP_AUX_FILTER_MODULES="$HTTP_AUX_FILTER_MODULES ngx_http_gm_module"
 NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_gm_filter_module.c"
-NGX_ADDON_DEPS="$NGX_ADDON_DEPS $ngx_addon_dir/src/ddebug.h $ngx_addon_dir/src/ngx_http_gm_filter_module.h"
+NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_gm_filter_convert.c"
+NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_gm_filter_composite.c"
+NGX_ADDON_DEPS="$NGX_ADDON_DEPS $ngx_addon_dir/src/ddebug.h"
+NGX_ADDON_DEPS="$NGX_ADDON_DEPS $ngx_addon_dir/src/ngx_http_gm_filter_module.h"
+NGX_ADDON_DEPS="$NGX_ADDON_DEPS $ngx_addon_dir/src/ngx_http_gm_filter_composite.h"
+NGX_ADDON_DEPS="$NGX_ADDON_DEPS $ngx_addon_dir/src/ngx_http_gm_filter_convert.h"
 
 CFLAGS="$CFLAGS `GraphicsMagick-config --cppflags`"

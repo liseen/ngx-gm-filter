@@ -1,9 +1,10 @@
 /* vim:set ft=c ts=4 sw=4 et fdm=marker: */
 
 #include "ddebug.h"
-/* TODO */
-#include "ngx_http_gm_filter_module.h"
 
+#include "ngx_http_gm_filter_module.h"
+#include "ngx_http_gm_filter_convert.h"
+#include "ngx_http_gm_filter_composite.h"
 
 
 static ngx_int_t ngx_http_gm_image_send(ngx_http_request_t *r,
@@ -15,15 +16,14 @@ static ngx_int_t ngx_http_gm_image_read(ngx_http_request_t *r,
 
 static ngx_buf_t *ngx_http_gm_image_process(ngx_http_request_t *r);
 
+static void ngx_http_gm_image_cleanup(void *data);
 static void ngx_http_gm_image_length(ngx_http_request_t *r,
     ngx_buf_t *b);
 
+static ngx_buf_t * ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx);
+
 static ngx_int_t ngx_http_gm_image_size(ngx_http_request_t *r,
     ngx_http_gm_ctx_t *ctx);
-
-static ngx_buf_t *
-ngx_http_gm_image_json(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx);
-
 
 static ngx_uint_t ngx_http_gm_get_value(ngx_http_request_t *r,
     ngx_http_complex_value_t *cv, ngx_uint_t v);
@@ -337,13 +337,13 @@ ngx_http_gm_image_read(ngx_http_request_t *r, ngx_chain_t *in)
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_gm_module);
 
-    if (ctx->image == NULL) {
-        ctx->image = ngx_palloc(r->pool, ctx->length);
-        if (ctx->image == NULL) {
+    if (ctx->image_blob == NULL) {
+        ctx->image_blob = ngx_palloc(r->pool, ctx->length);
+        if (ctx->image_blob == NULL) {
             return NGX_ERROR;
         }
 
-        ctx->last = ctx->image;
+        ctx->last = ctx->image_blob;
     }
 
     p = ctx->last;
@@ -356,7 +356,7 @@ ngx_http_gm_image_read(ngx_http_request_t *r, ngx_chain_t *in)
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                        "image buf: %uz", size);
 
-        rest = ctx->image + ctx->length - p;
+        rest = ctx->image_blob + ctx->length - p;
         size = (rest < size) ? rest : size;
 
         p = ngx_cpymem(p, b->pos, size);
@@ -378,73 +378,109 @@ ngx_http_gm_image_read(ngx_http_request_t *r, ngx_chain_t *in)
 static ngx_buf_t *
 ngx_http_gm_image_process(ngx_http_request_t *r)
 {
-    ngx_int_t                      rc;
+    ngx_int_t            rc;
     ngx_http_gm_ctx_t   *ctx;
-    ngx_http_gm_conf_t  *conf;
+    ngx_http_gm_conf_t  *gmcf;
+    ngx_buf_t           *b;
 
     r->connection->buffered &= ~NGX_HTTP_IMAGE_BUFFERED;
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_gm_module);
 
-    rc = ngx_http_gm_image_size(r, ctx);
-
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_gm_module);
-
-    return ngx_http_gm_image_json(r, rc == NGX_OK ? ctx : NULL);
+    return ngx_http_gm_image_run_commands(r, ctx);
 }
 
-
 static ngx_buf_t *
-ngx_http_gm_image_json(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
+ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
 {
-    size_t      len;
     ngx_buf_t  *b;
+    ngx_http_gm_conf_t  *gmcf;
 
-    b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
-    if (b == NULL) {
+    u_char         *image_blob;
+
+    ImageInfo      *image_info;
+    Image          *image;
+    ExceptionInfo  exception;
+
+    ngx_uint_t     i;
+    ngx_http_gm_command_t *gm_cmd;
+    u_char         *out_blob;
+    ngx_uint_t     out_len;
+
+    ngx_pool_cleanup_t            *cln;
+
+    gmcf = ngx_http_get_module_loc_conf(r, ngx_http_gm_module);
+    if (gmcf->cmds == NULL || gmcf->cmds->nelts == 0) {
+        /* TODO */
         return NULL;
     }
 
+    image_blob = ctx->image_blob;
+
+    image_info = CloneImageInfo((ImageInfo *) NULL);
+
+    /* blob to image */
+    image = BlobToImage(image_info, image_blob, ctx->length, &exception);
+    if (image == NULL) {
+        /* TODO */
+        return NULL;
+    }
+
+
+    /* run commands */
+    for (i = 0; i < gmcf->cmds->nelts; ++i) {
+        gm_cmd = &gmcf->cmds->elts[i];
+        if (gm_cmd->type == NGX_HTTP_GM_COMPOSITE_CMD) {
+            composite_image(&gm_cmd->composite_options, image);
+        }
+    }
+
+    /* image to blob */
+    out_blob = ImageToBlob(image_info, image,  &out_len, &exception);
+    if (out_blob == NULL) {
+        /* TODO */
+        return NULL;
+    }
+
+    /* image out to buf */
+    b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
+    if (b == NULL) {
+        /* TODO */
+        return NULL;
+    }
+
+    b->pos = out_blob;
+    b->last = out_blob + out_len;
     b->memory = 1;
     b->last_buf = 1;
 
-    ngx_http_clean_header(r);
-
-    r->headers_out.status = NGX_HTTP_OK;
-    ngx_str_set(&r->headers_out.content_type, "text/plain");
-    r->headers_out.content_type_lowcase = NULL;
-
-    if (ctx == NULL) {
-        b->pos = (u_char *) "{}" CRLF;
-        b->last = b->pos + sizeof("{}" CRLF) - 1;
-
-        ngx_http_gm_image_length(r, b);
-
-        return b;
-    }
-
-    len = sizeof("{ \"img\" : "
-                 "{ \"width\": , \"height\": , \"type\": \"jpeg\" } }" CRLF) - 1
-          + 2 * NGX_SIZE_T_LEN;
-
-    b->pos = ngx_pnalloc(r->pool, len);
-    if (b->pos == NULL) {
-        return NULL;
-    }
-
-    b->last = ngx_sprintf(b->pos,
-                          "{ \"img\" : "
-                                       "{ \"width\": %uz,"
-                                        " \"height\": %uz,"
-                                        " \"type\": \"%s\" } }" CRLF,
-                          ctx->width, ctx->height,
-                          ngx_http_gm_image_types[ctx->type - 1].data + 6);
-
     ngx_http_gm_image_length(r, b);
+
+    /* register cleanup */
+    cln = ngx_pool_cleanup_add(r->pool, 0);
+    if (cln == NULL) {
+        /* TODO */
+        return NGX_DECLINED;
+    }
+
+    cln->handler = ngx_http_gm_image_cleanup;
+    cln->data = image;
+
+
+    /* destory imput blob */
+    ngx_pfree(r->pool, ctx->image_blob);
+    /* destory image info */
+    DestroyImageInfo(image_info);
 
     return b;
 }
 
+static void
+ngx_http_gm_image_cleanup(void *data)
+{
+    /* destrory blob */
+    DestroyBlob((Image *)data);
+}
 
 
 static void
@@ -467,14 +503,14 @@ ngx_http_gm_image_size(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
     size_t       len, app;
     ngx_uint_t   width, height;
 
-    p = ctx->image;
+    p = ctx->image_blob;
 
     switch (ctx->type) {
 
     case NGX_HTTP_GM_IMAGE_JPEG:
 
         p += 2;
-        last = ctx->image + ctx->length - 10;
+        last = ctx->image_blob + ctx->length - 10;
         width = 0;
         height = 0;
         app = 0;
@@ -639,9 +675,7 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     ngx_str_t                         *value;
 
-    ngx_http_gm_cmd                   *gm_cmd;
-    ngx_http_gm_option                *gm_option;
-    ngx_str_t                         *gm_arg;
+    ngx_http_gm_command_t             *gm_cmd;
 
     ngx_int_t                          n;
     ngx_uint_t                         i;
@@ -649,7 +683,7 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_http_complex_value_t           cv;
     ngx_http_compile_complex_value_t   ccv;
 
-    ngx_array_t                     *args;
+    ngx_array_t                       *args;
 
     args  = cf->args;
     value = cf->args->elts;
@@ -661,7 +695,7 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
 
     if (gmcf->cmds == NULL) {
-        gmcf->cmds = ngx_array_create(cf->pool, 1, sizeof(ngx_http_gm_cmd));
+        gmcf->cmds = ngx_array_create(cf->pool, 1, sizeof(ngx_http_gm_command_t));
         if (gmcf->cmds == NULL) {
             goto failed;
         }
@@ -674,48 +708,18 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     if (ngx_strcmp(value[i].data, "convert") == 0) {
         gm_cmd->type = NGX_HTTP_GM_CONVERT_CMD;
+        if (parse_convert_options(cf->pool, args, i, &gm_cmd->convert_options) != 0)
+            goto failed;
+
     } else if (ngx_strcmp(value[i].data, "composite") == 0) {
+
         gm_cmd->type = NGX_HTTP_GM_COMPOSITE_CMD;
+        if (parse_composite_options(cf->pool, args, i, &gm_cmd->composite_options) != 0)
+            goto failed;
+
     } else {
+
         goto failed;
-    }
-
-    gm_cmd->options = ngx_array_create(cf->pool, 1, sizeof(ngx_http_gm_option));
-    if (gm_cmd->options == NULL) {
-        goto alloc_failed;
-    }
-
-    gm_option == NULL;
-    for (i = 2; i < args->nelts; ++i) {
-        if (ngx_strncmp(value[i].data, "-", 1) == 0) {
-            gm_option = ngx_array_push(gm_cmd->options);
-            if (gm_option == NULL) {
-                goto alloc_failed;
-            }
-
-            if (ngx_strcmp(value[i].data, "-resize") == 0) {
-                gm_option->type = NGX_HTTP_GM_RESIZE_OPTION;
-            } else {
-                goto failed;
-            }
-
-            gm_option->args = ngx_array_create(cf->pool, 1, sizeof(ngx_str_t));
-            if (gm_option->args == NULL) {
-                goto alloc_failed;
-            }
-        } else {
-            if (gm_option == NULL) {
-                goto failed;
-            }
-
-            gm_arg = ngx_array_push(gm_option->args);
-            if (gm_arg == NULL) {
-                goto alloc_failed;
-            }
-
-            gm_arg->data = value[i].data;
-            gm_arg->len = value[i].len;
-        }
     }
 
     return NGX_CONF_OK;
