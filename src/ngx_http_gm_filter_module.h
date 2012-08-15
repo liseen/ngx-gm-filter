@@ -1,6 +1,9 @@
 #ifndef NGX_HTTP_GM_FILTER_MODULE_H
 #define NGX_HTTP_GM_FILTER_MODULE_H
 
+#define DDEBUG 1
+#include "ddebug.h"
+
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -49,7 +52,7 @@ typedef struct _CompositeOptions {
 
     long stegano;
 
-    unsigned int stereo, tile;
+    unsigned int stereo, tile, min_width, min_height;
 
     Image *composite_image;
 } composite_options_t;

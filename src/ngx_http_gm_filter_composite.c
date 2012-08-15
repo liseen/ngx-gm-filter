@@ -6,6 +6,9 @@ ngx_uint_t parse_composite_options(ngx_pool_t * p, ngx_array_t *args, ngx_uint_t
 
     ngx_str_t                         *value;
     ngx_uint_t                         i;
+    ImageInfo                         *image_info;
+    Image                             *composite_image;
+    ExceptionInfo                      exception;
 
     value = args->elts;
 
@@ -18,11 +21,15 @@ ngx_uint_t parse_composite_options(ngx_pool_t * p, ngx_array_t *args, ngx_uint_t
     option_info->stereo = 0;
     option_info->tile = 0;
 
-    option_info->compose=OverCompositeOp;
+    option_info->compose = OverCompositeOp;
 
     option_info->gravity = ForgetGravity;
 
-    for (i = 2; i < args->nelts; ++i) {
+    if (args->nelts < 3) {
+        return 1;
+    }
+
+    for (i = 2; i < args->nelts - 1; ++i) {
         if (ngx_strcmp(value[i].data, "-gravity") == 0) {
             GravityType gravity = ForgetGravity;
             i++;
@@ -48,10 +55,41 @@ ngx_uint_t parse_composite_options(ngx_pool_t * p, ngx_array_t *args, ngx_uint_t
             if (!IsGeometry(option_info->geometry)) {
                 return 1;
             }
+        } else if (ngx_strcmp(value[i].data, "-min-width") == 0) {
+            i++;
+
+            if (i == args->nelts)
+                return 1;
+
+            option_info->min_width = ngx_atoi(value[i].data, value[i].len);
+        } else if (ngx_strcmp(value[i].data, "-min-height") == 0) {
+            i++;
+
+            if (i == args->nelts)
+                return 1;
+
+            option_info->min_height = ngx_atoi(value[i].data, value[i].len);
+
         } else {
             return 1;
         }
     }
+
+    image_info = CloneImageInfo((ImageInfo *) NULL);
+    ngx_memcpy(image_info->filename, value[args->nelts-1].data, value[args->nelts-1].len);
+    image_info->filename[value[args->nelts-1].len] = '\0';
+
+    dd("composite_image filename %s", image_info->filename);
+
+    GetExceptionInfo(&exception);
+    composite_image = ReadImage(image_info, &exception);
+    if (composite_image == NULL) {
+        return 1;
+    }
+    option_info->composite_image = composite_image;
+
+    DestroyImageInfo(image_info);
+    DestroyExceptionInfo(&exception);
 
     return 0;
 }
@@ -82,11 +120,19 @@ ngx_uint_t composite_image(composite_options_t *option_info, Image *image)
     image->gravity=option_info->gravity;
     (void) GetImageGeometry(image, composite_geometry, 0, &geometry);
 
-    status = CompositeImage(image, option_info->compose, composite_image,
-        geometry.x, geometry.y);
+    if (image->columns >= option_info->min_width &&
+            image->rows >= option_info->min_height) {
 
-    if (status == MagickFail) {
-        GetImageException(image, &exception);
+        GetExceptionInfo(&exception);
+        status = CompositeImage(image, option_info->compose, composite_image,
+            geometry.x, geometry.y);
+
+        if (status == MagickFail) {
+            /* TODO */
+            GetImageException(image, &exception);
+        }
+
+        DestroyExceptionInfo(&exception);
     }
 
     return NGX_OK;

@@ -1,7 +1,5 @@
 /* vim:set ft=c ts=4 sw=4 et fdm=marker: */
 
-#include "ddebug.h"
-
 #include "ngx_http_gm_filter_module.h"
 #include "ngx_http_gm_filter_convert.h"
 #include "ngx_http_gm_filter_composite.h"
@@ -38,6 +36,7 @@ static char *ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd,
 
 static ngx_int_t ngx_http_gm_init(ngx_conf_t *cf);
 
+static ngx_uint_t has_initinalized_flag = 0;
 
 static ngx_command_t  ngx_http_gm_commands[] = {
 
@@ -179,7 +178,6 @@ ngx_http_gm_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ngx_str_t                     *ct;
     ngx_chain_t                    out;
     ngx_http_gm_ctx_t   *ctx;
-    ngx_http_gm_conf_t  *conf;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "image filter");
 
@@ -199,7 +197,6 @@ ngx_http_gm_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
         ctx->type = ngx_http_gm_image_test(r, in);
 
-        conf = ngx_http_get_module_loc_conf(r, ngx_http_gm_module);
 
         if (ctx->type == NGX_HTTP_GM_IMAGE_NONE) {
             return ngx_http_filter_finalize_request(r,
@@ -378,10 +375,8 @@ ngx_http_gm_image_read(ngx_http_request_t *r, ngx_chain_t *in)
 static ngx_buf_t *
 ngx_http_gm_image_process(ngx_http_request_t *r)
 {
-    ngx_int_t            rc;
     ngx_http_gm_ctx_t   *ctx;
     ngx_http_gm_conf_t  *gmcf;
-    ngx_buf_t           *b;
 
     r->connection->buffered &= ~NGX_HTTP_IMAGE_BUFFERED;
 
@@ -400,12 +395,12 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
 
     ImageInfo      *image_info;
     Image          *image;
-    ExceptionInfo  exception;
+    ExceptionInfo   exception;
 
-    ngx_uint_t     i;
+    ngx_uint_t      i;
     ngx_http_gm_command_t *gm_cmd;
     u_char         *out_blob;
-    ngx_uint_t     out_len;
+    ngx_uint_t      out_len;
 
     ngx_pool_cleanup_t            *cln;
 
@@ -414,6 +409,8 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
         /* TODO */
         return NULL;
     }
+
+    GetExceptionInfo(&exception);
 
     image_blob = ctx->image_blob;
 
@@ -460,26 +457,30 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
     cln = ngx_pool_cleanup_add(r->pool, 0);
     if (cln == NULL) {
         /* TODO */
-        return NGX_DECLINED;
+        return NULL;
     }
 
     cln->handler = ngx_http_gm_image_cleanup;
-    cln->data = image;
+    cln->data = out_blob;
 
 
     /* destory imput blob */
     ngx_pfree(r->pool, ctx->image_blob);
+
+    /* destory iamge */
+    DestroyImage(image);
     /* destory image info */
     DestroyImageInfo(image_info);
+    DestroyExceptionInfo(&exception);
 
     return b;
 }
 
 static void
-ngx_http_gm_image_cleanup(void *data)
+ngx_http_gm_image_cleanup(void *blob)
 {
-    /* destrory blob */
-    DestroyBlob((Image *)data);
+    dd("cleanup iamge out_blob");
+    MagickFree(blob);
 }
 
 
@@ -685,6 +686,8 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     ngx_array_t                       *args;
 
+    dd("entering");
+
     args  = cf->args;
     value = cf->args->elts;
 
@@ -699,6 +702,13 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         if (gmcf->cmds == NULL) {
             goto failed;
         }
+    }
+
+    /* TODO */
+    if (!has_initinalized_flag) {
+        InitializeMagick("ngx_gm");
+
+        has_initinalized_flag = 1;
     }
 
     gm_cmd = ngx_array_push(gmcf->cmds);
@@ -746,6 +756,7 @@ ngx_http_gm_init(ngx_conf_t *cf)
 
     ngx_http_next_body_filter = ngx_http_top_body_filter;
     ngx_http_top_body_filter = ngx_http_gm_body_filter;
+
 
     return NGX_OK;
 }
