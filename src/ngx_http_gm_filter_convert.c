@@ -1,6 +1,6 @@
 #include "ngx_http_gm_filter_convert.h"
 
-ngx_int_t parse_convert_options(ngx_pool_t *p, ngx_array_t *args, ngx_uint_t start, convert_options_t *option_info)
+ngx_int_t parse_convert_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t start, convert_options_t *option_info)
 {
     ngx_http_gm_command_t             *gm_cmd;
     ngx_http_gm_convert_option_t      *gm_option;
@@ -15,7 +15,7 @@ ngx_int_t parse_convert_options(ngx_pool_t *p, ngx_array_t *args, ngx_uint_t sta
 
     value = args->elts;
 
-    option_info->options = ngx_array_create(p, 1, sizeof(ngx_http_gm_convert_option_t));
+    option_info->options = ngx_array_create(cf->pool, 1, sizeof(ngx_http_gm_convert_option_t));
     if (option_info->options == NULL) {
         return NGX_ERROR;
     }
@@ -26,7 +26,7 @@ ngx_int_t parse_convert_options(ngx_pool_t *p, ngx_array_t *args, ngx_uint_t sta
     end = args->nelts;
 
     for (i = 2; i < end; ++i) {
-        if (ngx_strncmp(value[i].data, "-resize", 1) == 0) {
+        if (ngx_strncmp(value[i].data, "-resize", value[i].len) == 0) {
             gm_option = ngx_array_push(options);
             if (gm_option == NULL) {
                 return NGX_ERROR;
@@ -39,8 +39,32 @@ ngx_int_t parse_convert_options(ngx_pool_t *p, ngx_array_t *args, ngx_uint_t sta
                 return NGX_ERROR;
             }
 
+            if (value[i].len > MaxTextExtent - 1) {
+                return NGX_ERROR;
+            }
+
             ngx_memcpy(gm_option->resize_geometry, value[i].data, value[i].len);
             gm_option->resize_geometry[value[i].len] = '\0';
+
+        } else if (ngx_strncmp(value[i].data, "-rotate", value[i].len) == 0) {
+            gm_option = ngx_array_push(options);
+            if (gm_option == NULL) {
+                return NGX_ERROR;
+            }
+
+            gm_option->type = NGX_HTTP_GM_ROTATE_OPTION;
+
+            i++;
+            if (i == end) {
+                return NGX_ERROR;
+            }
+
+            if (value[i].len > MaxTextExtent - 1) {
+                return NGX_ERROR;
+            }
+
+            ngx_memcpy(gm_option->rotate_degrees, value[i].data, value[i].len);
+            gm_option->rotate_degrees[value[i].len] = '\0';
 
         } else {
         }
@@ -58,6 +82,8 @@ ngx_int_t convert_image(ngx_http_request_t *r, convert_options_t *option_info, I
     RectangleInfo geometry;
     ExceptionInfo exception;
     Image *resize_image = NULL;
+    double degrees;
+    Image *rotate_image = NULL;
 
     dd("entering");
 
@@ -81,8 +107,8 @@ ngx_int_t convert_image(ngx_http_request_t *r, convert_options_t *option_info, I
 
             if (resize_image == (Image *) NULL) {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "gm filter: resize image failed, severity: %O reason: %s, description: %s",
-                        exception.severity, exception.reason, exception.description);
+                        "gm filter: resize image failed, arg: \"%s\" severity: \"%O\" reason: \"%s\", description: \"%s\"",
+                        option->resize_geometry, exception.severity, exception.reason, exception.description);
 
                 DestroyExceptionInfo(&exception);
                 return NGX_ERROR;
@@ -93,7 +119,38 @@ ngx_int_t convert_image(ngx_http_request_t *r, convert_options_t *option_info, I
             *image = resize_image;
 
             DestroyExceptionInfo(&exception);
-            continue;
+        } else if (option->type == NGX_HTTP_GM_ROTATE_OPTION) {
+            dd("starting rotate");
+
+            /*
+              Check for conditional image rotation.
+            */
+            if (strchr(option->rotate_degrees,'>') != (char *) NULL)
+                if ((*image)->columns <= (*image)->rows)
+                    continue;
+            if (strchr(option->rotate_degrees,'<') != (char *) NULL)
+                if ((*image)->columns >= (*image)->rows)
+                    continue;
+
+            GetExceptionInfo(&exception);
+
+            degrees = MagickAtoF();
+
+            rotate_image=RotateImage(*image, degrees, &exception);
+            if (rotate_image == (Image *) NULL) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                        "gm filter: rotate image failed, degrees: \"%s\" severity: \"%O\" reason: \"%s\", description: \"%s\"",
+                        option->rotate_degrees, exception.severity, exception.reason, exception.description);
+
+                DestroyExceptionInfo(&exception);
+                return NGX_ERROR;
+            }
+
+            DestroyImage(*image);
+            *image = rotate_image;
+
+            DestroyExceptionInfo(&exception);
+
         } else {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                         "gm filter: convert command, unkonwn option");

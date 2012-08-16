@@ -1,16 +1,19 @@
 #include "ngx_http_gm_filter_module.h"
 #include "ngx_http_gm_filter_composite.h"
 
-ngx_int_t parse_composite_options(ngx_pool_t * p, ngx_array_t *args, ngx_uint_t start, composite_options_t *option_info)
+ngx_int_t parse_composite_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t start, composite_options_t *option_info)
 {
 
     ngx_str_t                         *value;
     ngx_uint_t                         i;
+    ngx_uint_t                         end;
+    ngx_str_t                          file;
     ImageInfo                         *image_info;
     Image                             *composite_image;
     ExceptionInfo                      exception;
 
     value = args->elts;
+    end = args->nelts;
 
     /* init composite options */
 
@@ -25,25 +28,25 @@ ngx_int_t parse_composite_options(ngx_pool_t * p, ngx_array_t *args, ngx_uint_t 
 
     option_info->gravity = ForgetGravity;
 
-    if (args->nelts < 3) {
+    if (end < 3) {
         return NGX_ERROR;
     }
 
-    for (i = 2; i < args->nelts - 1; ++i) {
+    for (i = 2; i < end - 1; ++i) {
         if (ngx_strcmp(value[i].data, "-gravity") == 0) {
             GravityType gravity = ForgetGravity;
             i++;
-            if (i == args->nelts)
+            if (i == end)
                 return NGX_ERROR;
 
             gravity = StringToGravityType(value[i].data);
             if (gravity == ForgetGravity)
-                return 1;
+                return NGX_ERROR;
 
             option_info->gravity = gravity;
         } else if (ngx_strcmp(value[i].data, "-geometry") == 0) {
             i++;
-            if (i == args->nelts)
+            if (i == end)
                 return NGX_ERROR;
 
             if (value[i].len > MaxTextExtent - 1)
@@ -58,14 +61,14 @@ ngx_int_t parse_composite_options(ngx_pool_t * p, ngx_array_t *args, ngx_uint_t 
         } else if (ngx_strcmp(value[i].data, "-min-width") == 0) {
             i++;
 
-            if (i == args->nelts)
+            if (i == end)
                 return NGX_ERROR;
 
             option_info->min_width = ngx_atoi(value[i].data, value[i].len);
         } else if (ngx_strcmp(value[i].data, "-min-height") == 0) {
             i++;
 
-            if (i == args->nelts)
+            if (i == end)
                 return NGX_ERROR;
 
             option_info->min_height = ngx_atoi(value[i].data, value[i].len);
@@ -75,11 +78,18 @@ ngx_int_t parse_composite_options(ngx_pool_t * p, ngx_array_t *args, ngx_uint_t 
         }
     }
 
-    image_info = CloneImageInfo((ImageInfo *) NULL);
-    ngx_memcpy(image_info->filename, value[args->nelts-1].data, value[args->nelts-1].len);
-    image_info->filename[value[args->nelts-1].len] = '\0';
+    file = value[end - 1];
+    if (ngx_conf_full_name(cf->cycle, &file, 1) != NGX_OK) {
+        return NGX_ERROR;
+    }
 
-    dd("composite_image filename %s", image_info->filename);
+    image_info = CloneImageInfo((ImageInfo *) NULL);
+
+    ngx_memcpy(image_info->filename, file.data, file.len);
+    image_info->filename[file.len] = '\0';
+
+    dd("composite_image filename:\"%s\"", file.data);
+    dd("composite_image filename:\"%s\"", image_info->filename);
 
     GetExceptionInfo(&exception);
     composite_image = ReadImage(image_info, &exception);

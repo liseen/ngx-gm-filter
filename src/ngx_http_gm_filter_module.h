@@ -25,6 +25,7 @@
 /* option type */
 #define NGX_HTTP_GM_NONE_OPTION   0
 #define NGX_HTTP_GM_RESIZE_OPTION 1
+#define NGX_HTTP_GM_ROTATE_OPTION 1
 
 /* comamnd type */
 #define NGX_HTTP_GM_NONE_CMD      0
@@ -56,6 +57,8 @@ typedef struct {
     ngx_uint_t                   type;
 
     char                         resize_geometry[MaxTextExtent];
+    char                         rotate_degrees[MaxTextExtent];
+
 } ngx_http_gm_convert_option_t;
 
 typedef struct _ConvertOptions

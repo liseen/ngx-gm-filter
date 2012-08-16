@@ -757,7 +757,7 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
         gm_cmd->type = NGX_HTTP_GM_CONVERT_CMD;
         gm_cmd->cmd = "convert";
-        rc = parse_convert_options(cf->pool, args, i, &gm_cmd->convert_options);
+        rc = parse_convert_options(cf, args, i, &gm_cmd->convert_options);
         if (rc != NGX_OK) {
             goto failed;
         }
@@ -766,7 +766,7 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
         gm_cmd->type = NGX_HTTP_GM_COMPOSITE_CMD;
         gm_cmd->cmd = "composite";
-        rc = parse_composite_options(cf->pool, args, i, &gm_cmd->composite_options);
+        rc = parse_composite_options(cf, args, i, &gm_cmd->composite_options);
         if (rc != NGX_OK) {
             goto failed;
         }
