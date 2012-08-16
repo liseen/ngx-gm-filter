@@ -68,6 +68,7 @@ typedef struct _ConvertOptions
 typedef struct {
     ngx_uint_t                  type;
 
+    char                       *cmd;
     composite_options_t         composite_options;
     convert_options_t           convert_options;
 } ngx_http_gm_command_t;

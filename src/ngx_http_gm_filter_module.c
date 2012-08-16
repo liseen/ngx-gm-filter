@@ -132,7 +132,7 @@ ngx_http_gm_header_filter(ngx_http_request_t *r)
            == 0)
     {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "image filter: multipart/x-mixed-replace response");
+                      "gm filter: multipart/x-mixed-replace response");
 
         return NGX_ERROR;
     }
@@ -148,7 +148,7 @@ ngx_http_gm_header_filter(ngx_http_request_t *r)
 
     if (len != -1 && len > (off_t) conf->buffer_size) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "image filter: too big response: %O", len);
+                      "gm filter: too big response: %O", len);
 
         return NGX_HTTP_UNSUPPORTED_MEDIA_TYPE;
     }
@@ -388,7 +388,8 @@ ngx_http_gm_image_process(ngx_http_request_t *r)
 static ngx_buf_t *
 ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
 {
-    ngx_buf_t  *b;
+    ngx_buf_t           *b;
+    ngx_int_t            rc;
     ngx_http_gm_conf_t  *gmcf;
 
     u_char         *image_blob;
@@ -406,7 +407,8 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
 
     gmcf = ngx_http_get_module_loc_conf(r, ngx_http_gm_module);
     if (gmcf->cmds == NULL || gmcf->cmds->nelts == 0) {
-        /* TODO */
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "gm filter: run command failed, reason: no command");
         return NULL;
     }
 
@@ -419,31 +421,45 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
     /* blob to image */
     image = BlobToImage(image_info, image_blob, ctx->length, &exception);
     if (image == NULL) {
-        /* TODO */
-        return NULL;
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "gm filter: blob to image failed, severity: %O reason: %s, description: %s",
+                      exception.severity, exception.reason, exception.description);
+        goto failed1;
     }
 
 
     /* run commands */
+    rc = NGX_OK;
     for (i = 0; i < gmcf->cmds->nelts; ++i) {
+        /* TODO */
         gm_cmd = &gmcf->cmds->elts[i];
         if (gm_cmd->type == NGX_HTTP_GM_COMPOSITE_CMD) {
-            composite_image(&gm_cmd->composite_options, image);
+            rc = composite_image(r, &gm_cmd->composite_options, image);
+        }
+
+        if (rc != NGX_OK) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "gm filter: run command failed, comamnd: \"%s\"", gm_cmd->cmd);
+
+            goto failed2;
         }
     }
 
     /* image to blob */
     out_blob = ImageToBlob(image_info, image,  &out_len, &exception);
     if (out_blob == NULL) {
-        /* TODO */
-        return NULL;
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "gm filter: image to blob failed, severity: %O reason: %s, description: %s",
+                      exception.severity, exception.reason, exception.description);
+        goto failed2;
     }
 
     /* image out to buf */
     b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
     if (b == NULL) {
-        /* TODO */
-        return NULL;
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "gm filter: alloc buf_t failed");
+        goto failed3;
     }
 
     b->pos = out_blob;
@@ -456,8 +472,9 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
     /* register cleanup */
     cln = ngx_pool_cleanup_add(r->pool, 0);
     if (cln == NULL) {
-        /* TODO */
-        return NULL;
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "gm filter: register cleanup failed");
+        goto failed3;
     }
 
     cln->handler = ngx_http_gm_image_cleanup;
@@ -474,13 +491,28 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
     DestroyExceptionInfo(&exception);
 
     return b;
+
+failed3:
+    /* clean out blob */
+    MagickFree(out_blob);
+
+failed2:
+    /* destory iamge */
+    DestroyImage(image);
+
+failed1:
+    /* destory image info */
+    DestroyImageInfo(image_info);
+    DestroyExceptionInfo(&exception);
+
+    return NULL;
 }
 
 static void
-ngx_http_gm_image_cleanup(void *blob)
+ngx_http_gm_image_cleanup(void *out_blob)
 {
     dd("cleanup iamge out_blob");
-    MagickFree(blob);
+    MagickFree(out_blob);
 }
 
 
@@ -672,13 +704,14 @@ ngx_http_gm_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 static char *
 ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    ngx_http_gm_conf_t *gmcf = conf;
+    ngx_http_gm_conf_t                *gmcf = conf;
 
     ngx_str_t                         *value;
 
     ngx_http_gm_command_t             *gm_cmd;
 
     ngx_int_t                          n;
+    ngx_int_t                          rc;
     ngx_uint_t                         i;
 
     ngx_http_complex_value_t           cv;
@@ -717,15 +750,22 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
 
     if (ngx_strcmp(value[i].data, "convert") == 0) {
+
         gm_cmd->type = NGX_HTTP_GM_CONVERT_CMD;
-        if (parse_convert_options(cf->pool, args, i, &gm_cmd->convert_options) != 0)
+        gm_cmd->cmd = "convert";
+        rc = parse_convert_options(cf->pool, args, i, &gm_cmd->convert_options);
+        if (rc != NGX_OK) {
             goto failed;
+        }
 
     } else if (ngx_strcmp(value[i].data, "composite") == 0) {
 
         gm_cmd->type = NGX_HTTP_GM_COMPOSITE_CMD;
-        if (parse_composite_options(cf->pool, args, i, &gm_cmd->composite_options) != 0)
+        gm_cmd->cmd = "composite";
+        rc = parse_composite_options(cf->pool, args, i, &gm_cmd->composite_options);
+        if (rc != NGX_OK) {
             goto failed;
+        }
 
     } else {
 

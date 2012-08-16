@@ -1,8 +1,6 @@
 #include "ngx_http_gm_filter_convert.h"
 
-
-
-ngx_uint_t parse_convert_options(ngx_pool_t *p, ngx_array_t *args, ngx_uint_t start, convert_options_t *option_info)
+ngx_int_t parse_convert_options(ngx_pool_t *p, ngx_array_t *args, ngx_uint_t start, convert_options_t *option_info)
 {
     ngx_http_gm_command_t             *gm_cmd;
     ngx_http_gm_convert_option_t      *gm_option;
@@ -16,7 +14,7 @@ ngx_uint_t parse_convert_options(ngx_pool_t *p, ngx_array_t *args, ngx_uint_t st
 
     option_info->options = ngx_array_create(p, 1, sizeof(ngx_http_gm_convert_option_t));
     if (option_info->options == NULL) {
-        goto alloc_failed;
+        return NGX_ERROR;
     }
     options = option_info->options;
 
@@ -25,27 +23,27 @@ ngx_uint_t parse_convert_options(ngx_pool_t *p, ngx_array_t *args, ngx_uint_t st
         if (ngx_strncmp(value[i].data, "-", 1) == 0) {
             gm_option = ngx_array_push(options);
             if (gm_option == NULL) {
-                goto alloc_failed;
+                return NGX_ERROR;
             }
 
             if (ngx_strcmp(value[i].data, "-resize") == 0) {
                 gm_option->type = NGX_HTTP_GM_RESIZE_OPTION;
             } else {
-                goto failed;
+                return NGX_ERROR;
             }
 
             gm_option->args = ngx_array_create(p, 1, sizeof(ngx_str_t));
             if (gm_option->args == NULL) {
-                goto alloc_failed;
+                return NGX_ERROR;
             }
         } else {
             if (gm_option == NULL) {
-                goto failed;
+                return NGX_ERROR;
             }
 
             gm_arg = ngx_array_push(gm_option->args);
             if (gm_arg == NULL) {
-                goto alloc_failed;
+                return NGX_ERROR;
             }
 
             gm_arg->data = value[i].data;
@@ -53,9 +51,13 @@ ngx_uint_t parse_convert_options(ngx_pool_t *p, ngx_array_t *args, ngx_uint_t st
         }
     }
 
-    return 0;
-failed:
-    return 1;
-alloc_failed:
-    return 2;
+    return NGX_OK;
+}
+
+
+ngx_int_t convert_image(ngx_http_request_t *r, convert_options_t *option_info, Image *image)
+{
+
+
+    return NGX_OK;
 }
