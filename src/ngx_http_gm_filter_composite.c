@@ -84,17 +84,21 @@ ngx_int_t parse_composite_options(ngx_pool_t * p, ngx_array_t *args, ngx_uint_t 
     GetExceptionInfo(&exception);
     composite_image = ReadImage(image_info, &exception);
     if (composite_image == NULL) {
+        DestroyImageInfo(image_info);
+        DestroyExceptionInfo(&exception);
+
         return NGX_ERROR;
     }
+
     option_info->composite_image = composite_image;
 
     DestroyImageInfo(image_info);
     DestroyExceptionInfo(&exception);
 
-    return 0;
+    return NGX_OK;
 }
 
-ngx_int_t composite_image(ngx_http_request_t *r, composite_options_t *option_info, Image *image)
+ngx_int_t composite_image(ngx_http_request_t *r, composite_options_t *option_info, Image **image)
 {
     char  composite_geometry[MaxTextExtent];
     MagickPassFail status;
@@ -117,19 +121,19 @@ ngx_int_t composite_image(ngx_http_request_t *r, composite_options_t *option_inf
         composite_image->columns, composite_image->rows,geometry.x,
         geometry.y);
 
-    image->gravity=option_info->gravity;
-    (void) GetImageGeometry(image, composite_geometry, 0, &geometry);
+    (*image)->gravity=option_info->gravity;
+    (void) GetImageGeometry(*image, composite_geometry, 0, &geometry);
 
-    if (image->columns >= option_info->min_width &&
-            image->rows >= option_info->min_height) {
+    if ((*image)->columns >= option_info->min_width &&
+            (*image)->rows >= option_info->min_height) {
 
         GetExceptionInfo(&exception);
 
-        status = CompositeImage(image, option_info->compose, composite_image,
+        status = CompositeImage(*image, option_info->compose, composite_image,
             geometry.x, geometry.y);
 
         if (status == MagickFail) {
-            GetImageException(image, &exception);
+            GetImageException(*image, &exception);
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                         "gm filter: composite image failed, severity: %O reason: %s, description: %s",
                         exception.severity, exception.reason, exception.description);

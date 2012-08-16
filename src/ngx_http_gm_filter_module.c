@@ -18,7 +18,8 @@ static void ngx_http_gm_image_cleanup(void *data);
 static void ngx_http_gm_image_length(ngx_http_request_t *r,
     ngx_buf_t *b);
 
-static ngx_buf_t * ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx);
+static ngx_buf_t * ngx_http_gm_image_run_commands(ngx_http_request_t *r,
+    ngx_http_gm_ctx_t *ctx);
 
 static ngx_int_t ngx_http_gm_image_size(ngx_http_request_t *r,
     ngx_http_gm_ctx_t *ctx);
@@ -400,6 +401,7 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
 
     ngx_uint_t      i;
     ngx_http_gm_command_t *gm_cmd;
+    ngx_http_gm_command_t *gm_cmds;
     u_char         *out_blob;
     ngx_uint_t      out_len;
 
@@ -430,11 +432,13 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
 
     /* run commands */
     rc = NGX_OK;
+    gm_cmds = gmcf->cmds->elts;
     for (i = 0; i < gmcf->cmds->nelts; ++i) {
-        /* TODO */
-        gm_cmd = &gmcf->cmds->elts[i];
+        gm_cmd = &gm_cmds[i];
         if (gm_cmd->type == NGX_HTTP_GM_COMPOSITE_CMD) {
-            rc = composite_image(r, &gm_cmd->composite_options, image);
+            rc = composite_image(r, &gm_cmd->composite_options, &image);
+        } else if (gm_cmd->type == NGX_HTTP_GM_CONVERT_CMD) {
+            rc = convert_image(r, &gm_cmd->convert_options, &image);
         }
 
         if (rc != NGX_OK) {
@@ -772,6 +776,8 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         goto failed;
     }
 
+    dd("parse config okay");
+
     return NGX_CONF_OK;
 
 alloc_failed:
@@ -782,7 +788,7 @@ alloc_failed:
 
 failed:
 
-    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid parameter \"%V\"",
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid parameter for command, \"%V\"",
                        &value[i]);
 
     return NGX_CONF_ERROR;

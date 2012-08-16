@@ -35,12 +35,6 @@
 #  define MaxTextExtent  2053
 #endif
 
-
-typedef struct {
-    ngx_uint_t                   type;
-    ngx_array_t                 *args;
-} ngx_http_gm_convert_option_t;
-
 typedef struct _CompositeOptions {
     char geometry[MaxTextExtent];
 
@@ -58,12 +52,16 @@ typedef struct _CompositeOptions {
 } composite_options_t;
 
 
+typedef struct {
+    ngx_uint_t                   type;
+
+    char                         resize_geometry[MaxTextExtent];
+} ngx_http_gm_convert_option_t;
+
 typedef struct _ConvertOptions
 {
     ngx_array_t *options;
 } convert_options_t;
-
-
 
 typedef struct {
     ngx_uint_t                  type;
