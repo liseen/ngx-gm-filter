@@ -49,6 +49,8 @@ typedef struct _CompositeOptions {
 
     unsigned int stereo, tile, min_width, min_height;
 
+    ngx_str_t composite_image_file;
+
     Image *composite_image;
 } composite_options_t;
 

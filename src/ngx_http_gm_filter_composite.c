@@ -8,9 +8,6 @@ ngx_int_t parse_composite_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t 
     ngx_uint_t                         i;
     ngx_uint_t                         end;
     ngx_str_t                          file;
-    ImageInfo                         *image_info;
-    Image                             *composite_image;
-    ExceptionInfo                      exception;
 
     value = args->elts;
     end = args->nelts;
@@ -83,46 +80,59 @@ ngx_int_t parse_composite_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t 
         return NGX_ERROR;
     }
 
-    image_info = CloneImageInfo((ImageInfo *) NULL);
+    option_info->composite_image_file = file;
 
-    ngx_memcpy(image_info->filename, file.data, file.len);
-    image_info->filename[file.len] = '\0';
-
-    dd("composite_image filename:\"%s\"", file.data);
-    dd("composite_image filename:\"%s\"", image_info->filename);
-
-    GetExceptionInfo(&exception);
-    composite_image = ReadImage(image_info, &exception);
-    if (composite_image == NULL) {
-        DestroyImageInfo(image_info);
-        DestroyExceptionInfo(&exception);
-
-        return NGX_ERROR;
-    }
-
-    option_info->composite_image = composite_image;
-
-    DestroyImageInfo(image_info);
-    DestroyExceptionInfo(&exception);
 
     return NGX_OK;
 }
 
 ngx_int_t composite_image(ngx_http_request_t *r, composite_options_t *option_info, Image **image)
 {
-    char  composite_geometry[MaxTextExtent];
-    MagickPassFail status;
+    char             composite_geometry[MaxTextExtent];
+    MagickPassFail   status;
+    RectangleInfo    geometry;
+    ExceptionInfo    exception;
 
+    ImageInfo       *image_info;
+    Image            *composite_image;
 
-    RectangleInfo geometry;
-    Image  *composite_image;
-    ExceptionInfo exception;
+    dd("entering");
 
     status = MagickPass;
 
     geometry.x=0;
     geometry.y=0;
+
     composite_image = option_info->composite_image;
+
+    if (composite_image == NULL) {
+        image_info = CloneImageInfo((ImageInfo *) NULL);
+
+        ngx_memcpy(image_info->filename, option_info->composite_image_file.data,
+                option_info->composite_image_file.len);
+
+        image_info->filename[option_info->composite_image_file.len] = '\0';
+
+        dd("composite_image filename:\"%s\"", image_info->filename);
+
+        GetExceptionInfo(&exception);
+        composite_image = ReadImage(image_info, &exception);
+        if (composite_image == NULL) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                        "gm filter: read composite image failed, severity: %O reason: %s, description: %s",
+                        exception.severity, exception.reason, exception.description);
+        }
+
+        option_info->composite_image = composite_image;
+
+        DestroyImageInfo(image_info);
+        DestroyExceptionInfo(&exception);
+    }
+
+    if (composite_image == NULL) {
+        return NGX_ERROR;
+    }
+
 
     (void) GetGeometry(option_info->geometry, &geometry.x, &geometry.y,
         &geometry.width, &geometry.height);

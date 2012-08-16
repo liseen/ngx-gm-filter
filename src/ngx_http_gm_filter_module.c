@@ -36,8 +36,9 @@ static char *ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 
 static ngx_int_t ngx_http_gm_init(ngx_conf_t *cf);
+static ngx_int_t ngx_http_gm_init_worker(ngx_cycle_t *cycle);
+static void ngx_http_gm_exit_worker(ngx_cycle_t *cycle);
 
-static ngx_uint_t has_initinalized_flag = 0;
 
 static ngx_command_t  ngx_http_gm_commands[] = {
 
@@ -87,13 +88,13 @@ ngx_module_t  ngx_http_gm_module = {
     &ngx_http_gm_module_ctx,        /* module context */
     ngx_http_gm_commands,           /* module directives */
     NGX_HTTP_MODULE,                /* module type */
-    NULL,                           /* init master */
+    ngx_http_gm_init_worker,        /* init master */
     NULL,                           /* init module */
-    NULL,                           /* init process */
+    ngx_http_gm_init_worker,        /* init process */
     NULL,                           /* init thread */
     NULL,                           /* exit thread */
-    NULL,                           /* exit process */
-    NULL,                           /* exit master */
+    ngx_http_gm_init_worker,        /* exit process */
+    ngx_http_gm_exit_worker,        /* exit master */
     NGX_MODULE_V1_PADDING
 };
 
@@ -755,13 +756,6 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         }
     }
 
-    /* TODO */
-    if (!has_initinalized_flag) {
-        InitializeMagick("ngx_gm");
-
-        has_initinalized_flag = 1;
-    }
-
     gm_cmd = ngx_array_push(gmcf->cmds);
     if (gm_cmd == NULL) {
         goto alloc_failed;
@@ -808,6 +802,21 @@ failed:
     return NGX_CONF_ERROR;
 }
 
+
+static ngx_int_t
+ngx_http_gm_init_worker(ngx_cycle_t *cycle)
+{
+    InitializeMagick("logs");
+
+    return NGX_OK;
+}
+
+static void
+ngx_http_gm_exit_worker(ngx_cycle_t *cycle)
+{
+    DestroyMagick();
+}
+
 static ngx_int_t
 ngx_http_gm_init(ngx_conf_t *cf)
 {
@@ -820,3 +829,4 @@ ngx_http_gm_init(ngx_conf_t *cf)
 
     return NGX_OK;
 }
+
