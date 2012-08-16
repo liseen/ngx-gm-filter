@@ -48,6 +48,14 @@ static ngx_command_t  ngx_http_gm_commands[] = {
       0,
       NULL },
 
+    { ngx_string("gm_image_quality"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_num_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_gm_conf_t, image_quality),
+      NULL },
+
+
     { ngx_string("gm_buffer"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_size_slot,
@@ -450,6 +458,8 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
     }
 
     /* image to blob */
+    image_info->quality = gmcf->image_quality;
+
     out_blob = ImageToBlob(image_info, image,  &out_len, &exception);
     if (out_blob == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
@@ -684,6 +694,7 @@ ngx_http_gm_create_conf(ngx_conf_t *cf)
     }
 
     gmcf->buffer_size = NGX_CONF_UNSET_SIZE;
+    gmcf->image_quality = NGX_CONF_UNSET_SIZE;
 
     return gmcf;
 }
@@ -701,6 +712,9 @@ ngx_http_gm_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 
     ngx_conf_merge_size_value(conf->buffer_size, prev->buffer_size,
                               4 * 1024 * 1024);
+
+    ngx_conf_merge_size_value(conf->image_quality, prev->image_quality,
+                              75);
     return NGX_CONF_OK;
 }
 

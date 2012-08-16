@@ -77,6 +77,8 @@ typedef struct {
 typedef struct {
     ngx_array_t                 *cmds;
     size_t                       buffer_size;
+
+    size_t                       image_quality;
 } ngx_http_gm_conf_t;
 
 typedef struct {
