@@ -25,7 +25,7 @@
 /* option type */
 #define NGX_HTTP_GM_NONE_OPTION   0
 #define NGX_HTTP_GM_RESIZE_OPTION 1
-#define NGX_HTTP_GM_ROTATE_OPTION 1
+#define NGX_HTTP_GM_ROTATE_OPTION 2
 
 /* comamnd type */
 #define NGX_HTTP_GM_NONE_CMD      0
@@ -38,16 +38,11 @@
 
 typedef struct _CompositeOptions {
     char geometry[MaxTextExtent];
-
     CompositeOperator compose;
-
     GravityType gravity;
 
-    double dissolve;
-
-    long stegano;
-
-    unsigned int stereo, tile, min_width, min_height;
+    ngx_uint_t min_width;
+    ngx_uint_t min_height;
 
     ngx_str_t composite_image_file;
 
@@ -58,9 +53,10 @@ typedef struct _CompositeOptions {
 typedef struct {
     ngx_uint_t                   type;
 
-    char                         resize_geometry[MaxTextExtent];
-    char                         rotate_degrees[MaxTextExtent];
-
+    ngx_str_t                    resize_geometry;
+    ngx_http_complex_value_t    *resize_geometry_cv;
+    ngx_str_t                    rotate_degrees;
+    ngx_http_complex_value_t    *rotate_degrees_cv;
 } ngx_http_gm_convert_option_t;
 
 typedef struct _ConvertOptions

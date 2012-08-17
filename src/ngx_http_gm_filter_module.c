@@ -93,7 +93,7 @@ ngx_module_t  ngx_http_gm_module = {
     ngx_http_gm_init_worker,        /* init process */
     NULL,                           /* init thread */
     NULL,                           /* exit thread */
-    ngx_http_gm_init_worker,        /* exit process */
+    ngx_http_gm_exit_worker,        /* exit process */
     ngx_http_gm_exit_worker,        /* exit master */
     NGX_MODULE_V1_PADDING
 };

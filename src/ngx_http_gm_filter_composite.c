@@ -16,13 +16,8 @@ ngx_int_t parse_composite_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t 
 
     ngx_memzero(option_info, sizeof(composite_options_t));
 
-    option_info->dissolve = 0.0;
-    option_info->stegano = 0;
-    option_info->stereo = 0;
-    option_info->tile = 0;
 
     option_info->compose = OverCompositeOp;
-
     option_info->gravity = ForgetGravity;
 
     if (end < 3) {
