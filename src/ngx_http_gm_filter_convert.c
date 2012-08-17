@@ -1,8 +1,11 @@
 #include "ngx_http_gm_filter_convert.h"
 
-static u_char * ngx_http_gm_get_str_value(ngx_http_request_t *r, ngx_http_complex_value_t *cv, ngx_str_t *val);
+static u_char * ngx_http_gm_get_str_value(ngx_http_request_t *r,
+    ngx_http_complex_value_t *cv, ngx_str_t *val);
 
-ngx_int_t parse_convert_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t start, convert_options_t *option_info)
+ngx_int_t
+parse_convert_options(ngx_conf_t *cf, ngx_array_t *args,
+    ngx_uint_t start, convert_options_t *option_info)
 {
     ngx_http_gm_command_t             *gm_cmd;
     ngx_http_gm_convert_option_t      *gm_option;
@@ -23,7 +26,9 @@ ngx_int_t parse_convert_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t st
 
     value = args->elts;
 
-    option_info->options = ngx_array_create(cf->pool, 1, sizeof(ngx_http_gm_convert_option_t));
+    option_info->options = ngx_array_create(cf->pool, 1,
+                                        sizeof(ngx_http_gm_convert_option_t));
+
     if (option_info->options == NULL) {
         return NGX_ERROR;
     }
@@ -128,7 +133,9 @@ ngx_int_t parse_convert_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t st
 }
 
 
-ngx_int_t convert_image(ngx_http_request_t *r, convert_options_t *option_info, Image **image)
+ngx_int_t
+convert_image(ngx_http_request_t *r, convert_options_t *option_info,
+    Image **image)
 {
     ngx_int_t i;
     ngx_http_gm_convert_option_t *options;
@@ -139,7 +146,8 @@ ngx_int_t convert_image(ngx_http_request_t *r, convert_options_t *option_info, I
     u_char  *resize_geometry = NULL;
     Image *rotate_image = NULL;
     u_char  *rotate_degrees = NULL;
-    double degrees;
+    ngx_int_t degrees;
+    ngx_int_t degrees_suffix_len = 0;
 
     dd("entering");
 
@@ -160,11 +168,19 @@ ngx_int_t convert_image(ngx_http_request_t *r, convert_options_t *option_info, I
                 return  NGX_ERROR;
             }
 
-            (void) GetImageGeometry(*image, (char *)resize_geometry, 1, &geometry);
+            if (ngx_strncmp(resize_geometry, "no", 2) == 0) {
+                continue;
+            }
+
+            (void) GetImageGeometry(*image, (char *)resize_geometry, 1,
+                                    &geometry);
 
             if ((geometry.width == (*image)->columns) &&
                 (geometry.height == (*image)->rows))
                 continue;
+
+            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                           "resize image geometry: \"%s\"", resize_geometry);
 
             GetExceptionInfo(&exception);
             resize_image=ResizeImage(*image, geometry.width, geometry.height,
@@ -172,8 +188,11 @@ ngx_int_t convert_image(ngx_http_request_t *r, convert_options_t *option_info, I
 
             if (resize_image == (Image *) NULL) {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "gm filter: resize image failed, arg: \"%s\" severity: \"%O\" reason: \"%s\", description: \"%s\"",
-                        resize_geometry, exception.severity, exception.reason, exception.description);
+                              "gm filter: resize image failed, "
+                              "arg: \"%s\" severity: \"%O\" "
+                              "reason: \"%s\", description: \"%s\"",
+                              resize_geometry, exception.severity,
+                              exception.reason, exception.description);
 
                 DestroyExceptionInfo(&exception);
 
@@ -197,23 +216,40 @@ ngx_int_t convert_image(ngx_http_request_t *r, convert_options_t *option_info, I
                 return  NGX_ERROR;
             }
 
-            if (ngx_strchr(rotate_degrees,'>') != (char *) NULL)
+            if (ngx_strchr(rotate_degrees,'>') != (char *) NULL) {
                 if ((*image)->columns <= (*image)->rows)
                     continue;
+                degrees_suffix_len = 1;
+            }
 
-            if (ngx_strchr(rotate_degrees,'<') != (char *) NULL)
+            if (ngx_strchr(rotate_degrees,'<') != (char *) NULL) {
                 if ((*image)->columns >= (*image)->rows)
                     continue;
+                degrees_suffix_len = 1;
+            }
+
+            degrees = 0;
+            degrees = ngx_atoi(rotate_degrees,
+                               ngx_strlen(rotate_degrees) - degrees_suffix_len);
+
+            if (degrees == 0) {
+                continue;
+            }
+
+            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                           "rotate image degrees: \"%O\"", degrees);
 
             GetExceptionInfo(&exception);
 
-            degrees = ngx_atoi(rotate_degrees, ngx_strlen(rotate_degrees));
 
             rotate_image=RotateImage(*image, degrees, &exception);
             if (rotate_image == (Image *) NULL) {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "gm filter: rotate image failed, degrees: \"%s\" severity: \"%O\" reason: \"%s\", description: \"%s\"",
-                        option->rotate_degrees, exception.severity, exception.reason, exception.description);
+                              "gm filter: rotate image failed, "
+                              "degrees: \"%s\" severity: \"%O\" "
+                              "reason: \"%s\", description: \"%s\"",
+                              option->rotate_degrees, exception.severity,
+                              exception.reason, exception.description);
 
                 DestroyExceptionInfo(&exception);
 
@@ -227,7 +263,7 @@ ngx_int_t convert_image(ngx_http_request_t *r, convert_options_t *option_info, I
 
         } else {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "gm filter: convert command, unkonwn option");
+                              "gm filter: convert command, unkonwn option");
             return NGX_ERROR;
         }
     }
@@ -236,7 +272,9 @@ ngx_int_t convert_image(ngx_http_request_t *r, convert_options_t *option_info, I
 }
 
 
-static u_char * ngx_http_gm_get_str_value(ngx_http_request_t *r, ngx_http_complex_value_t *cv, ngx_str_t *val)
+static u_char *
+ngx_http_gm_get_str_value(ngx_http_request_t *r, ngx_http_complex_value_t *cv,
+    ngx_str_t *val)
 {
     u_char      *buf;
     ngx_str_t  str;

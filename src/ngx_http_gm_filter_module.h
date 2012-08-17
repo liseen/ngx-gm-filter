@@ -1,7 +1,7 @@
 #ifndef NGX_HTTP_GM_FILTER_MODULE_H
 #define NGX_HTTP_GM_FILTER_MODULE_H
 
-#define DDEBUG 1
+#define DDEBUG 0
 #include "ddebug.h"
 
 #include <ngx_config.h>

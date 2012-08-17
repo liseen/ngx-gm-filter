@@ -1,7 +1,9 @@
 #include "ngx_http_gm_filter_module.h"
 #include "ngx_http_gm_filter_composite.h"
 
-ngx_int_t parse_composite_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t start, composite_options_t *option_info)
+ngx_int_t
+parse_composite_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t start,
+    composite_options_t *option_info)
 {
 
     ngx_str_t                         *value;
@@ -81,7 +83,10 @@ ngx_int_t parse_composite_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t 
     return NGX_OK;
 }
 
-ngx_int_t composite_image(ngx_http_request_t *r, composite_options_t *option_info, Image **image)
+
+ngx_int_t
+composite_image(ngx_http_request_t *r, composite_options_t *option_info,
+    Image **image)
 {
     char             composite_geometry[MaxTextExtent];
     MagickPassFail   status;
@@ -108,14 +113,17 @@ ngx_int_t composite_image(ngx_http_request_t *r, composite_options_t *option_inf
 
         image_info->filename[option_info->composite_image_file.len] = '\0';
 
-        dd("composite_image filename:\"%s\"", image_info->filename);
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                       "composite image filename: \"%s\"", image_info->filename);
 
         GetExceptionInfo(&exception);
         composite_image = ReadImage(image_info, &exception);
         if (composite_image == NULL) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "gm filter: read composite image failed, severity: %O reason: %s, description: %s",
-                        exception.severity, exception.reason, exception.description);
+                          "gm filter: read composite image failed, "
+                          "severity: %O reason: %s, description: %s",
+                          exception.severity, exception.reason,
+                          exception.description);
         }
 
         option_info->composite_image = composite_image;
@@ -128,6 +136,9 @@ ngx_int_t composite_image(ngx_http_request_t *r, composite_options_t *option_inf
         return NGX_ERROR;
     }
 
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "composite image geometry: \"%s\"", option_info->geometry);
 
     (void) GetGeometry(option_info->geometry, &geometry.x, &geometry.y,
         &geometry.width, &geometry.height);
@@ -150,8 +161,10 @@ ngx_int_t composite_image(ngx_http_request_t *r, composite_options_t *option_inf
         if (status == MagickFail) {
             GetImageException(*image, &exception);
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "gm filter: composite image failed, severity: %O reason: %s, description: %s",
-                        exception.severity, exception.reason, exception.description);
+                          "gm filter: composite image failed, "
+                          "severity: %O reason: %s, description: %s",
+                          exception.severity, exception.reason,
+                          exception.description);
             DestroyExceptionInfo(&exception);
 
             return NGX_ERROR;
