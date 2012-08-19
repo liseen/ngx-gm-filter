@@ -72,6 +72,7 @@ Content-Length: 3319
          alias $FindBin::Bin/data;
          gm convert -resize \$resize;
          gm_image_quality 85;
+         gm_buffer 16M;
     }
 EOF
 --- request
