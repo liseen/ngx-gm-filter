@@ -1,6 +1,8 @@
 #include "ngx_http_gm_filter_module.h"
 #include "ngx_http_gm_filter_composite.h"
 
+extern MagickExport GravityType StringToGravityType(const char *option);
+
 ngx_int_t
 parse_composite_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t start,
     composite_options_t *option_info)
@@ -10,6 +12,8 @@ parse_composite_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t start,
     ngx_uint_t                         i;
     ngx_uint_t                         end;
     ngx_str_t                          file;
+
+    GravityType                        gravity;
 
     value = args->elts;
     end = args->nelts;
@@ -28,12 +32,12 @@ parse_composite_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t start,
 
     for (i = 2; i < end - 1; ++i) {
         if (ngx_strcmp(value[i].data, "-gravity") == 0) {
-            GravityType gravity = ForgetGravity;
+            gravity = ForgetGravity;
             i++;
             if (i == end)
                 return NGX_ERROR;
 
-            gravity = StringToGravityType(value[i].data);
+            gravity = StringToGravityType((char*)value[i].data);
             if (gravity == ForgetGravity)
                 return NGX_ERROR;
 

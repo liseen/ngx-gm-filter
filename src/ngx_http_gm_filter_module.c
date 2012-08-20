@@ -23,13 +23,6 @@ static void ngx_http_gm_image_length(ngx_http_request_t *r,
 static ngx_buf_t * ngx_http_gm_image_run_commands(ngx_http_request_t *r,
     ngx_http_gm_ctx_t *ctx);
 
-static ngx_int_t ngx_http_gm_image_size(ngx_http_request_t *r,
-    ngx_http_gm_ctx_t *ctx);
-
-static ngx_uint_t ngx_http_gm_get_value(ngx_http_request_t *r,
-    ngx_http_complex_value_t *cv, ngx_uint_t v);
-static ngx_uint_t ngx_http_gm_value(ngx_str_t *value);
-
 static void *ngx_http_gm_create_conf(ngx_conf_t *cf);
 static char *ngx_http_gm_merge_conf(ngx_conf_t *cf, void *parent,
     void *child);
@@ -90,13 +83,13 @@ ngx_module_t  ngx_http_gm_module = {
     &ngx_http_gm_module_ctx,        /* module context */
     ngx_http_gm_commands,           /* module directives */
     NGX_HTTP_MODULE,                /* module type */
-    ngx_http_gm_init_worker,        /* init master */
+    NULL,                           /* init master */
     NULL,                           /* init module */
     ngx_http_gm_init_worker,        /* init process */
     NULL,                           /* init thread */
     NULL,                           /* exit thread */
     ngx_http_gm_exit_worker,        /* exit process */
-    ngx_http_gm_exit_worker,        /* exit master */
+    NULL,                           /* exit master */
     NGX_MODULE_V1_PADDING
 };
 
@@ -388,7 +381,6 @@ static ngx_buf_t *
 ngx_http_gm_image_process(ngx_http_request_t *r)
 {
     ngx_http_gm_ctx_t   *ctx;
-    ngx_http_gm_conf_t  *gmcf;
 
     r->connection->buffered &= ~NGX_HTTP_IMAGE_BUFFERED;
 
@@ -566,147 +558,6 @@ ngx_http_gm_image_length(ngx_http_request_t *r, ngx_buf_t *b)
 }
 
 
-static ngx_int_t
-ngx_http_gm_image_size(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
-{
-    u_char      *p, *last;
-    size_t       len, app;
-    ngx_uint_t   width, height;
-
-    p = ctx->image_blob;
-
-    switch (ctx->type) {
-
-    case NGX_HTTP_GM_IMAGE_JPEG:
-
-        p += 2;
-        last = ctx->image_blob + ctx->length - 10;
-        width = 0;
-        height = 0;
-        app = 0;
-
-        while (p < last) {
-
-            if (p[0] == 0xff && p[1] != 0xff) {
-
-                ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                               "JPEG: %02xd %02xd", p[0], p[1]);
-
-                p++;
-
-                if ((*p == 0xc0 || *p == 0xc1 || *p == 0xc2 || *p == 0xc3
-                     || *p == 0xc9 || *p == 0xca || *p == 0xcb)
-                    && (width == 0 || height == 0))
-                {
-                    width = p[6] * 256 + p[7];
-                    height = p[4] * 256 + p[5];
-                }
-
-                ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                               "JPEG: %02xd %02xd", p[1], p[2]);
-
-                len = p[1] * 256 + p[2];
-
-                if (*p >= 0xe1 && *p <= 0xef) {
-                    /* application data, e.g., EXIF, Adobe XMP, etc. */
-                    app += len;
-                }
-
-                p += len;
-
-                continue;
-            }
-
-            p++;
-        }
-
-        if (width == 0 || height == 0) {
-            return NGX_DECLINED;
-        }
-
-        if (ctx->length / 20 < app) {
-            /* force conversion if application data consume more than 5% */
-            ctx->force = 1;
-            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                           "app data size: %uz", app);
-        }
-
-        break;
-
-    case NGX_HTTP_GM_IMAGE_GIF:
-
-        if (ctx->length < 10) {
-            return NGX_DECLINED;
-        }
-
-        width = p[7] * 256 + p[6];
-        height = p[9] * 256 + p[8];
-
-        break;
-
-    case NGX_HTTP_GM_IMAGE_PNG:
-
-        if (ctx->length < 24) {
-            return NGX_DECLINED;
-        }
-
-        width = p[18] * 256 + p[19];
-        height = p[22] * 256 + p[23];
-
-        break;
-
-    default:
-
-        return NGX_DECLINED;
-    }
-
-    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "image size: %d x %d", width, height);
-
-    ctx->width = width;
-    ctx->height = height;
-
-    return NGX_OK;
-}
-
-
-static ngx_uint_t
-ngx_http_gm_get_value(ngx_http_request_t *r,
-    ngx_http_complex_value_t *cv, ngx_uint_t v)
-{
-    ngx_str_t  val;
-
-    if (cv == NULL) {
-        return v;
-    }
-
-    if (ngx_http_complex_value(r, cv, &val) != NGX_OK) {
-        return 0;
-    }
-
-    return ngx_http_gm_value(&val);
-}
-
-
-static ngx_uint_t
-ngx_http_gm_value(ngx_str_t *value)
-{
-    ngx_int_t  n;
-
-    if (value->len == 1 && value->data[0] == '-') {
-        return (ngx_uint_t) -1;
-    }
-
-    n = ngx_atoi(value->data, value->len);
-
-    if (n > 0) {
-        return (ngx_uint_t) n;
-    }
-
-    return 0;
-}
-
-
 static void *
 ngx_http_gm_create_conf(ngx_conf_t *cf)
 {
@@ -752,12 +603,8 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     ngx_http_gm_command_t             *gm_cmd;
 
-    ngx_int_t                          n;
     ngx_int_t                          rc;
     ngx_uint_t                         i;
-
-    ngx_http_complex_value_t           cv;
-    ngx_http_compile_complex_value_t   ccv;
 
     ngx_array_t                       *args;
 

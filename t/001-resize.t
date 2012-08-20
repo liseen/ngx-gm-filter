@@ -30,7 +30,7 @@ Content-Length: 597491
 
 
 
-=== TEST 2: resize 200x200 and no crop
+=== TEST 2: resize 200x200
 --- config eval
 <<EOF;
     location /resize {
@@ -64,7 +64,7 @@ Content-Length: 3319
 
 
 
-=== TEST 4: no resize with variable
+=== TEST 4: resize with variable
 --- config eval
 <<EOF;
     location /resize {
@@ -80,5 +80,24 @@ GET /resize/1024_768.jpg
 --- response_headers
 Content-Type: image/jpeg
 Content-Length: 3319
+
+
+
+=== TEST 5: resize with crop
+--- config eval
+<<EOF;
+    location /resize {
+         set \$resize "100x100c";
+         alias $FindBin::Bin/data;
+         gm convert -resize \$resize;
+         gm_image_quality 85;
+         gm_buffer 16M;
+    }
+EOF
+--- request
+GET /resize/1024_768.jpg
+--- response_headers
+Content-Type: image/jpeg
+Content-Length: 4193
 
 

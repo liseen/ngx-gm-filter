@@ -7,9 +7,7 @@ ngx_int_t
 parse_convert_options(ngx_conf_t *cf, ngx_array_t *args,
     ngx_uint_t start, convert_options_t *option_info)
 {
-    ngx_http_gm_command_t             *gm_cmd;
     ngx_http_gm_convert_option_t      *gm_option;
-    ngx_str_t                         *gm_arg;
 
     ngx_uint_t                         i;
     ngx_uint_t                         end;
@@ -35,7 +33,7 @@ parse_convert_options(ngx_conf_t *cf, ngx_array_t *args,
 
     options = option_info->options;
 
-    gm_option == NULL;
+    gm_option = NULL;
     end = args->nelts;
 
     for (i = 2; i < end; ++i) {
@@ -137,17 +135,23 @@ ngx_int_t
 convert_image(ngx_http_request_t *r, convert_options_t *option_info,
     Image **image)
 {
-    ngx_int_t i;
-    ngx_http_gm_convert_option_t *options;
-    ngx_http_gm_convert_option_t *option;
-    RectangleInfo geometry;
-    ExceptionInfo exception;
-    Image *resize_image = NULL;
-    u_char  *resize_geometry = NULL;
-    Image *rotate_image = NULL;
-    u_char  *rotate_degrees = NULL;
-    ngx_int_t degrees;
-    ngx_int_t degrees_suffix_len = 0;
+    ngx_uint_t                          i;
+
+    ngx_http_gm_convert_option_t      *options;
+    ngx_http_gm_convert_option_t      *option;
+
+    RectangleInfo                      geometry;
+    RectangleInfo                      geometry_info;
+    ExceptionInfo                      exception;
+
+    Image                             *resize_image = NULL;
+    u_char                            *resize_geometry = NULL;
+    u_char                            *need_crop_resize = NULL;
+
+    Image                             *rotate_image = NULL;
+    u_char                            *rotate_degrees = NULL;
+    ngx_int_t                          degrees;
+    ngx_int_t                          degrees_suffix_len = 0;
 
     dd("entering");
 
@@ -162,6 +166,11 @@ convert_image(ngx_http_request_t *r, convert_options_t *option_info,
             resize_geometry = ngx_http_gm_get_str_value(r,
                     option->resize_geometry_cv, &option->resize_geometry);
 
+            need_crop_resize = (u_char *)ngx_strchr(resize_geometry, 'c');
+            if (need_crop_resize != NULL) {
+                *need_crop_resize = '^';
+            }
+
             if (resize_geometry == NULL) {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                         "gm filter: resize image, get resize geometry failed");
@@ -171,6 +180,7 @@ convert_image(ngx_http_request_t *r, convert_options_t *option_info,
             if (ngx_strncmp(resize_geometry, "no", 2) == 0) {
                 continue;
             }
+
 
             (void) GetImageGeometry(*image, (char *)resize_geometry, 1,
                                     &geometry);
@@ -183,7 +193,7 @@ convert_image(ngx_http_request_t *r, convert_options_t *option_info,
                            "resize image geometry: \"%s\"", resize_geometry);
 
             GetExceptionInfo(&exception);
-            resize_image=ResizeImage(*image, geometry.width, geometry.height,
+            resize_image = ResizeImage(*image, geometry.width, geometry.height,
                 (*image)->filter,(*image)->blur, &exception);
 
             if (resize_image == (Image *) NULL) {
@@ -200,10 +210,45 @@ convert_image(ngx_http_request_t *r, convert_options_t *option_info,
             }
 
             DestroyImage(*image);
-
             *image = resize_image;
-
             DestroyExceptionInfo(&exception);
+
+            if (need_crop_resize != NULL) {
+                GetGeometry((char *)resize_geometry,
+                            &geometry_info.x, &geometry_info.y,
+                            (unsigned long *)(&geometry_info.width),
+                            (unsigned long *)(&geometry_info.height));
+
+                if (geometry_info.width > (*image)->columns ||
+                        geometry_info.height > (*image)->rows) {
+                    continue;
+                }
+
+                geometry_info.x = ((*image)->columns - geometry_info.width) / 2;
+                geometry_info.y = ((*image)->rows - geometry_info.height) / 2;
+
+                GetExceptionInfo(&exception);
+                resize_image = CropImage(*image, &geometry_info, &exception);
+
+
+                if (resize_image == (Image *) NULL) {
+                    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                                "gm filter: resize croping image failed, "
+                                "arg: \"%s\" severity: \"%O\" "
+                                "reason: \"%s\", description: \"%s\"",
+                                resize_geometry, exception.severity,
+                                exception.reason, exception.description);
+
+                    DestroyExceptionInfo(&exception);
+
+                    return NGX_ERROR;
+                }
+
+                DestroyImage(*image);
+                *image = resize_image;
+                DestroyExceptionInfo(&exception);
+            }
+
         } else if (option->type == NGX_HTTP_GM_ROTATE_OPTION) {
             dd("starting rotate");
 

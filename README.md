@@ -12,7 +12,7 @@ This module is under active development and is production ready.
 Version
 =======
 
-This document describes ngx-gm-filter [v0.1.0](https://github.com/liseen/ngx-gm-filter/tags).
+This document describes ngx-gm-filter [v0.2.0](https://github.com/liseen/ngx-gm-filter/tags).
 
 
 Synopsis
@@ -67,7 +67,11 @@ gm
 
 **context:** *location*
 
+gm samples
+--------------
 
+**gm convert -resize 100x200!**
+**gm convert -resize 100x200c**
 
 
 Installation
