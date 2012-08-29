@@ -77,8 +77,22 @@ gm samples
 Installation
 ============
 
-Build the source with this module:
+Install GraphicsMagick
+------------
 
+Install GraphicsMagick with jpeg and png.
+    sudo apt-get install libjpeg-dev libpng-dev
+    wget ftp://ftp.graphicsmagick.org/pub/GraphicsMagick/1.3/GraphicsMagick-1.3.16.tar.gz
+    tar xzvf GraphicsMagick-1.3.16.tar.gz
+    cd GraphicsMagick-1.3.16
+    ./configure --with-x=no --with-jpeg=yes --with-png=yes
+    make
+    sudo make install
+
+Install ngx-gm-filter
+------------
+
+Build the source with this module:
 
     wget 'http://nginx.org/download/nginx-1.2.1.tar.gz'
     tar -xzvf nginx-1.2.1.tar.gz

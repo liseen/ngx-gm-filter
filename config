@@ -2,7 +2,7 @@ ngx_feature="libGraphicsMagick library"
 ngx_feature_name=
 ngx_feature_run=no
 ngx_feature_incs="#include <magick/api.h>"
-ngx_feature_test="(void) luaL_newstate();"
+ngx_feature_test="InitializeMagick(NULL)"
 
 # auto-discovery
 ngx_feature_path=

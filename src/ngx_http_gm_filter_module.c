@@ -681,11 +681,13 @@ ngx_http_gm_init_worker(ngx_cycle_t *cycle)
     return NGX_OK;
 }
 
+
 static void
 ngx_http_gm_exit_worker(ngx_cycle_t *cycle)
 {
     DestroyMagick();
 }
+
 
 static ngx_int_t
 ngx_http_gm_init(ngx_conf_t *cf)
