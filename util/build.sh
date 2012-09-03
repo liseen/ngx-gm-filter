@@ -18,11 +18,11 @@ if [ ! -s nginx-$version.tar.gz ]; then
 fi
 tar -xzvf nginx-$version.tar.gz
 
-				#--add-module=$root \
 cd nginx-$version/
 if [[ "$BUILD_CLEAN" -eq 1 || ! -f Makefile || "$root/config" -nt Makefile || "$root/util/build.sh" -nt Makefile ]]; then
 	./configure --prefix=$root/work \
                 --with-http_image_filter_module \
+				--add-module=$root \
 				$opts \
                 --with-debug
 fi
