@@ -80,7 +80,8 @@ Installation
 Install GraphicsMagick
 ------------
 
-Install GraphicsMagick with jpeg and png.
+Install GraphicsMagick with jpeg and png
+
     sudo apt-get install libjpeg-dev libpng-dev
     wget ftp://ftp.graphicsmagick.org/pub/GraphicsMagick/1.3/GraphicsMagick-1.3.16.tar.gz
     tar xzvf GraphicsMagick-1.3.16.tar.gz
