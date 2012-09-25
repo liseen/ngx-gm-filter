@@ -17,6 +17,9 @@ parse_convert_options(ngx_conf_t *cf, ngx_array_t *args,
     ngx_http_complex_value_t           resize_cv;
     ngx_http_compile_complex_value_t   resize_ccv;
 
+    ngx_http_complex_value_t           crop_cv;
+    ngx_http_compile_complex_value_t   crop_ccv;
+
     ngx_http_complex_value_t           rotate_cv;
     ngx_http_compile_complex_value_t   rotate_ccv;
 
@@ -122,6 +125,50 @@ parse_convert_options(ngx_conf_t *cf, ngx_array_t *args,
                 *gm_option->rotate_degrees_cv = rotate_cv;
             }
 
+        } else if (ngx_strncmp(value[i].data, "-crop", value[i].len) == 0) {
+            gm_option = ngx_array_push(options);
+            if (gm_option == NULL) {
+                return NGX_ERROR;
+            }
+
+            gm_option->type = NGX_HTTP_GM_CROP_OPTION;
+            gm_option->crop_geometry_cv = NULL;
+
+            i++;
+            if (i == end) {
+                return NGX_ERROR;
+            }
+
+            ngx_memzero(&crop_ccv, sizeof(ngx_http_compile_complex_value_t));
+
+            crop_ccv.cf = cf;
+            crop_ccv.value = &value[i];
+            crop_ccv.complex_value = &crop_cv;
+
+            if (ngx_http_compile_complex_value(&crop_ccv) != NGX_OK) {
+                return NGX_ERROR;
+            }
+
+            if (crop_cv.lengths == NULL) {
+
+                if (value[i].len > MaxTextExtent - 1) {
+                    return NGX_ERROR;
+                }
+
+                gm_option->crop_geometry = value[i];
+
+            } else {
+                gm_option->crop_geometry_cv = ngx_palloc(cf->pool,
+                        sizeof(ngx_http_complex_value_t));
+
+                if (gm_option->crop_geometry_cv == NULL) {
+                    return NGX_ERROR;
+                }
+
+                *gm_option->crop_geometry_cv = crop_cv;
+            }
+
+
         } else {
 
         }
@@ -147,6 +194,10 @@ convert_image(ngx_http_request_t *r, convert_options_t *option_info,
     Image                             *resize_image = NULL;
     u_char                            *resize_geometry = NULL;
     u_char                            *need_crop_resize = NULL;
+
+    int                                crop_flags;
+    Image                             *crop_image = NULL;
+    u_char                            *crop_geometry = NULL;
 
     Image                             *rotate_image = NULL;
     u_char                            *rotate_degrees = NULL;
@@ -177,7 +228,8 @@ convert_image(ngx_http_request_t *r, convert_options_t *option_info,
                 return  NGX_ERROR;
             }
 
-            if (ngx_strncmp(resize_geometry, "no", 2) == 0) {
+            if ((ngx_strlen(resize_geometry) == 0) ||
+                    (ngx_strncmp(resize_geometry, "no", 2)) == 0) {
                 continue;
             }
 
@@ -306,9 +358,58 @@ convert_image(ngx_http_request_t *r, convert_options_t *option_info,
 
             DestroyExceptionInfo(&exception);
 
+        } else if (option->type == NGX_HTTP_GM_CROP_OPTION) {
+            dd("starting crop");
+            crop_geometry = ngx_http_gm_get_str_value(r,
+                    option->crop_geometry_cv, &option->crop_geometry);
+
+            if (crop_geometry == NULL) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                        "gm filter: crop image, get crop geometry failed");
+                return  NGX_ERROR;
+            }
+
+            if ((ngx_strlen(crop_geometry) == 0) ||
+                    (ngx_strncmp(crop_geometry, "no", 2)) == 0) {
+                continue;
+            }
+
+            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                           "crop image geometry: \"%s\"", crop_geometry);
+
+            crop_flags = GetImageGeometry(*image, (char *)crop_geometry, 0,
+                                    &geometry);
+
+            if ((geometry.width == 0) || (geometry.height == 0) ||
+                ((crop_flags & XValue) != 0) || ((crop_flags & YValue) != 0) ||
+                (crop_flags & PercentValue)) {
+
+                GetExceptionInfo(&exception);
+	            crop_image = CropImage(*image, &geometry, &exception);
+
+                if (crop_image == (Image *) NULL) {
+                    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                                "gm filter: crop image failed, "
+                                "arg: \"%s\" severity: \"%O\" "
+                                "reason: \"%s\", description: \"%s\"",
+                                crop_geometry, exception.severity,
+                                exception.reason, exception.description);
+
+                    DestroyExceptionInfo(&exception);
+
+                    return NGX_ERROR;
+                }
+
+                DestroyImage(*image);
+                *image = crop_image;
+                DestroyExceptionInfo(&exception);
+            } else {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                              "gm filter:  command, unkonwn option");
+            }
         } else {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                              "gm filter: convert command, unkonwn option");
+                              "gm filter: invalid crop geometry: \"%s\"", crop_geometry);
             return NGX_ERROR;
         }
     }

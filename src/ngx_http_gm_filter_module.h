@@ -26,6 +26,7 @@
 #define NGX_HTTP_GM_NONE_OPTION   0
 #define NGX_HTTP_GM_RESIZE_OPTION 1
 #define NGX_HTTP_GM_ROTATE_OPTION 2
+#define NGX_HTTP_GM_CROP_OPTION   3
 
 /* comamnd type */
 #define NGX_HTTP_GM_NONE_CMD      0
@@ -57,6 +58,8 @@ typedef struct {
     ngx_http_complex_value_t    *resize_geometry_cv;
     ngx_str_t                    rotate_degrees;
     ngx_http_complex_value_t    *rotate_degrees_cv;
+    ngx_str_t                    crop_geometry;
+    ngx_http_complex_value_t    *crop_geometry_cv;
 } ngx_http_gm_convert_option_t;
 
 typedef struct _ConvertOptions
