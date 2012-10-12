@@ -18,7 +18,7 @@ This document describes ngx-gm-filter [v0.2.0](https://github.com/liseen/ngx-gm-
 Synopsis
 ========
 
-
+```
 server {
     gm_buffer 10M;
 
@@ -34,7 +34,7 @@ server {
          gm_image_quality 85;
     }
 }
-
+```
 
 Description
 ===========
