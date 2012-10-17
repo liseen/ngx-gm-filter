@@ -69,8 +69,11 @@ gm
 
 gm samples
 --------------
-**gm convert -resize 100x200!**
-**gm convert -resize 100x200c**
+
+```
+gm convert -resize 100x200!
+gm convert -resize 100x200c
+```
 
 
 Installation
