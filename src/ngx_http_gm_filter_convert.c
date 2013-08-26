@@ -1,13 +1,17 @@
-#include "ngx_http_gm_filter_convert.h"
+#include "ngx_http_gm_filter_module.h"
 
-static u_char * ngx_http_gm_get_str_value(ngx_http_request_t *r,
-    ngx_http_complex_value_t *cv, ngx_str_t *val);
+typedef struct _ConvertOptions
+{
+    ngx_array_t *options;
+} convert_options_t;
+
 
 ngx_int_t
 parse_convert_options(ngx_conf_t *cf, ngx_array_t *args,
-    ngx_uint_t start, convert_options_t *option_info)
+    ngx_uint_t start, void **option)
 {
     ngx_http_gm_convert_option_t      *gm_option;
+    convert_options_t                 *option_info;
 
     ngx_uint_t                         i;
     ngx_uint_t                         end;
@@ -24,6 +28,13 @@ parse_convert_options(ngx_conf_t *cf, ngx_array_t *args,
     ngx_http_compile_complex_value_t   rotate_ccv;
 
     dd("entering");
+
+    option_info = ngx_palloc(cf->pool, sizeof(convert_options_t));
+    if (option_info == NULL) {
+        return NGX_ERROR;
+    }
+
+    *option = option_info;
 
     value = args->elts;
 
@@ -179,7 +190,7 @@ parse_convert_options(ngx_conf_t *cf, ngx_array_t *args,
 
 
 ngx_int_t
-convert_image(ngx_http_request_t *r, convert_options_t *option_info,
+convert_image(ngx_http_request_t *r, void *opt,
     Image **image)
 {
     ngx_uint_t                          i;
@@ -203,6 +214,7 @@ convert_image(ngx_http_request_t *r, convert_options_t *option_info,
     u_char                            *rotate_degrees = NULL;
     ngx_int_t                          degrees;
     ngx_int_t                          degrees_suffix_len = 0;
+    convert_options_t                 *option_info = (convert_options_t *)opt;
 
     dd("entering");
 
@@ -404,8 +416,8 @@ convert_image(ngx_http_request_t *r, convert_options_t *option_info,
                 *image = crop_image;
                 DestroyExceptionInfo(&exception);
             } else {
-                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                              "gm filter:  command, unkonwn option");
+                ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
+                              "gm filter: command crop, unkonwn option");
             }
         } else {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
@@ -417,37 +429,3 @@ convert_image(ngx_http_request_t *r, convert_options_t *option_info,
     return NGX_OK;
 }
 
-
-static u_char *
-ngx_http_gm_get_str_value(ngx_http_request_t *r, ngx_http_complex_value_t *cv,
-    ngx_str_t *val)
-{
-    u_char      *buf;
-    ngx_str_t  str;
-
-    if (cv == NULL) {
-        buf = ngx_pcalloc(r->pool, val->len + 1);
-        if (buf == NULL) {
-            return NULL;
-        }
-
-        ngx_memcpy(buf, val->data, val->len);
-        buf[val->len] = '\0';
-
-        return buf;
-    } else {
-        if (ngx_http_complex_value(r, cv, &str) != NGX_OK) {
-            return NULL;
-        }
-
-        buf = ngx_pcalloc(r->pool, str.len + 1);
-        if (buf == NULL) {
-            return NULL;
-        }
-
-        ngx_memcpy(buf, str.data, str.len);
-        buf[str.len] = '\0';
-
-        return buf;
-    }
-}
