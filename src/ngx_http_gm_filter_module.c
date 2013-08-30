@@ -14,6 +14,8 @@ static ngx_int_t ngx_http_gm_image_read(ngx_http_request_t *r,
 static ngx_buf_t *ngx_http_gm_image_process(ngx_http_request_t *r);
 
 static void ngx_http_gm_image_cleanup(void *data);
+static ngx_uint_t ngx_http_gm_filter_value(ngx_str_t *value);
+
 static void ngx_http_gm_image_length(ngx_http_request_t *r,
     ngx_buf_t *b);
 static ngx_buf_t *ngx_http_gm_image_json(ngx_http_request_t *r,  Image *image);
@@ -25,12 +27,20 @@ static void *ngx_http_gm_create_conf(ngx_conf_t *cf);
 static char *ngx_http_gm_merge_conf(ngx_conf_t *cf, void *parent,
     void *child);
 
+static char *ngx_http_gm_quality(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf);
+
 static char *ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf);
+
+static char *ngx_http_gm_style(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 
 static ngx_int_t ngx_http_gm_init(ngx_conf_t *cf);
 static ngx_int_t ngx_http_gm_init_worker(ngx_cycle_t *cycle);
 static void ngx_http_gm_exit_worker(ngx_cycle_t *cycle);
+
+static ngx_int_t ngx_http_gm_parse_style(ngx_conf_t *cf, ngx_http_request_t *r, ngx_str_t *value, void *conf);
 
 /* parse geometry option */
 static ngx_int_t ngx_http_gm_parse_geometry(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t start, void **option);
@@ -38,7 +48,17 @@ static ngx_int_t ngx_http_gm_parse_geometry(ngx_conf_t *cf, ngx_array_t *args, n
 /* resize */
 ngx_int_t gm_resize_image(ngx_http_request_t *r, void *option, Image **image);
 
+/* thumbnail */
+ngx_int_t gm_thumbnail_image(ngx_http_request_t *r, void *option, Image **image);
+
+/* sample */
+ngx_int_t gm_sample_image(ngx_http_request_t *r, void *option, Image **image);
+
+/* scale */
+ngx_int_t gm_scale_image(ngx_http_request_t *r, void *option, Image **image);
+
 /* crop */
+ngx_int_t parse_crop_options(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t start, void **option);
 ngx_int_t gm_crop_image(ngx_http_request_t *r, void *option, Image **image);
 
 /* rotate */
@@ -55,6 +75,11 @@ ngx_int_t composite_image(ngx_http_request_t *r, void *option, Image **image);
 
 /* gm command */
 static ngx_http_gm_command_t ngx_gm_commands[] = {
+    { ngx_string("empty"),
+      NULL,
+      NULL,
+      NULL},
+
     { ngx_string("identify"),
       NULL,
       NULL,
@@ -70,9 +95,24 @@ static ngx_http_gm_command_t ngx_gm_commands[] = {
       ngx_http_gm_parse_geometry,
       NULL },
 
+    { ngx_string("thumbnail"),
+      gm_thumbnail_image,
+      ngx_http_gm_parse_geometry,
+      NULL },
+
+    { ngx_string("sample"),
+      gm_sample_image,
+      ngx_http_gm_parse_geometry,
+      NULL },
+
+    { ngx_string("scale"),
+      gm_scale_image,
+      ngx_http_gm_parse_geometry,
+      NULL },
+
     { ngx_string("crop"),
       gm_crop_image,
-      ngx_http_gm_parse_geometry, 
+      parse_crop_options, 
       NULL },
 
     { ngx_string("rotate"),
@@ -89,6 +129,12 @@ static ngx_http_gm_command_t ngx_gm_commands[] = {
 };
 
 static ngx_command_t  ngx_http_gm_commands[] = {
+    { ngx_string("gm_filter"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_flag_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_gm_conf_t, filter),
+      NULL },
 
     { ngx_string("gm"),
       NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
@@ -97,11 +143,20 @@ static ngx_command_t  ngx_http_gm_commands[] = {
       0,
       NULL },
 
+    /* use for custom combined command */
+    { ngx_string("gm_style"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_http_gm_style,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
+
     { ngx_string("gm_image_quality"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_num_slot,
+      ngx_http_gm_quality,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_gm_conf_t, image_quality),
+      0,
       NULL },
 
 
@@ -178,7 +233,7 @@ ngx_http_gm_header_filter(ngx_http_request_t *r)
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_gm_module);
 
-    if (conf->cmds == NULL) {
+    if (!conf->filter) {
         return ngx_http_next_header_filter(r);
     }
 
@@ -237,7 +292,6 @@ ngx_http_gm_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ngx_chain_t                    out;
     ngx_http_gm_ctx_t   *ctx;
 
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "image filter");
 
     if (in == NULL) {
         return ngx_http_next_body_filter(r, in);
@@ -353,7 +407,7 @@ ngx_http_gm_image_test(ngx_http_request_t *r, ngx_chain_t *in)
     }
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "image filter: \"%c%c\"", p[0], p[1]);
+                   "gm filter: \"%c%c\"", p[0], p[1]);
 
     if (p[0] == 0xff && p[1] == 0xd8) {
 
@@ -409,7 +463,7 @@ ngx_http_gm_image_read(ngx_http_request_t *r, ngx_chain_t *in)
         size = b->last - b->pos;
 
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "gm image buf: %uz", size);
+                       "gm filter: image buf size %uz", size);
 
         rest = ctx->image_blob + ctx->length - p;
         size = (rest < size) ? rest : size;
@@ -434,10 +488,33 @@ static ngx_buf_t *
 ngx_http_gm_image_process(ngx_http_request_t *r)
 {
     ngx_http_gm_ctx_t   *ctx;
+    ngx_http_gm_conf_t  *gmcf;
+    ngx_str_t            str;
 
     r->connection->buffered &= ~NGX_HTTP_IMAGE_BUFFERED;
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_gm_module);
+    gmcf = ngx_http_get_module_loc_conf(r, ngx_http_gm_module);
+
+    /* quality */
+    if (gmcf->qcv != NULL) {
+        if (ngx_http_complex_value(r, gmcf->qcv, &str) != NGX_OK) {
+            return NULL;
+        }
+        gmcf->image_quality = ngx_http_gm_filter_value(&str);
+    }
+
+    /* style */
+    if (gmcf->style_cv != NULL) {
+        if (ngx_http_complex_value(r, gmcf->style_cv, &str) != NGX_OK) {
+            return NULL;
+        }
+
+        /* parse style */
+        if (ngx_http_gm_parse_style(NULL, r, &str, gmcf) != NGX_OK) {
+            return NULL;
+        }
+    }
 
     return ngx_http_gm_image_run_commands(r, ctx);
 }
@@ -465,14 +542,11 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
     ngx_pool_cleanup_t            *cln;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "gm: entering gm image run commands");
+                   "gm filter: entering gm image run commands");
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "gm filter: url %V", &r->uri);
 
     gmcf = ngx_http_get_module_loc_conf(r, ngx_http_gm_module);
-    if (gmcf->cmds == NULL || gmcf->cmds->nelts == 0) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "gm filter: run command failed, reason: no command");
-        return NULL;
-    }
 
     GetExceptionInfo(&exception);
 
@@ -482,7 +556,7 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
 
     /* blob to image */
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "gm: blob to image");
+                   "gm filter: blob to image");
 
     image = BlobToImage(image_info, image_blob, ctx->length, &exception);
     if (image == NULL) {
@@ -498,34 +572,36 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
 
     /* run commands */
     rc = NGX_OK;
-    for (i = 0, cmd_info = gmcf->cmds->elts; i < gmcf->cmds->nelts; ++i, cmd_info++) {
-        gm_cmd = cmd_info->command;
+    if (gmcf->cmds != NULL) {
+        for (i = 0, cmd_info = gmcf->cmds->elts; i < gmcf->cmds->nelts; ++i, cmd_info++) {
+            gm_cmd = cmd_info->command;
 
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                "gm filter: run command: \"%V\"",
-                &gm_cmd->name);
-
-        if (gm_cmd->handler != NULL) {
-            rc = gm_cmd->handler(r, cmd_info->option, &image);
-        }
-
-        if (rc != NGX_OK) {
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "gm filter: run command failed, command: \"%V\"",
+            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                    "gm filter: run command: \"%V\"",
                     &gm_cmd->name);
 
-            goto failed2;
-        }
+            if (gm_cmd->handler != NULL) {
+                rc = gm_cmd->handler(r, cmd_info->option, &image);
+            }
 
-        if (gm_cmd->out_handler != NULL) {
-            b = gm_cmd->out_handler(r, image);
-            goto out;
+            if (rc != NGX_OK) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                        "gm filter: run command failed, command: \"%V\"",
+                        &gm_cmd->name);
+
+                goto failed2;
+            }
+
+            if (gm_cmd->out_handler != NULL) {
+                b = gm_cmd->out_handler(r, image);
+                goto out;
+            }
         }
     }
 
     /* image to blob */
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-            "gm: image to blob");
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+            "gm filter: image to blob, quality %d", gmcf->image_quality);
 
     image_info->quality = gmcf->image_quality;
 
@@ -541,7 +617,7 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
 
     /* image out to buf */
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-            "gm: blob to buf");
+            "gm filter: blob to buf");
 
     b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
     if (b == NULL) {
@@ -668,8 +744,9 @@ ngx_http_gm_create_conf(ngx_conf_t *cf)
         return NULL;
     }
 
+    gmcf->filter = NGX_CONF_UNSET;
     gmcf->buffer_size = NGX_CONF_UNSET_SIZE;
-    gmcf->image_quality = NGX_CONF_UNSET_SIZE;
+    gmcf->image_quality = NGX_CONF_UNSET_UINT;
 
     return gmcf;
 }
@@ -685,11 +762,19 @@ ngx_http_gm_merge_conf(ngx_conf_t *cf, void *parent, void *child)
         conf->cmds = prev->cmds;
     }
 
+    ngx_conf_merge_value(conf->filter, prev->filter, 0);
     ngx_conf_merge_size_value(conf->buffer_size, prev->buffer_size,
                               4 * 1024 * 1024);
 
-    ngx_conf_merge_size_value(conf->image_quality, prev->image_quality,
-                              75);
+    if (conf->image_quality == NGX_CONF_UNSET_UINT) {
+
+        ngx_conf_merge_uint_value(conf->image_quality, prev->image_quality, 75);
+
+        if (conf->qcv == NULL) {
+            conf->qcv = prev->qcv;
+        }
+    }
+    
     return NGX_CONF_OK;
 }
 
@@ -762,6 +847,7 @@ ngx_http_gm_get_geometry_value(ngx_conf_t *conf, ngx_str_t *value, ngx_http_gm_g
     }
 }
 
+
 /* get value */
 u_char *
 ngx_http_gm_get_str_value(ngx_http_request_t *r, ngx_http_complex_value_t *cv,
@@ -820,6 +906,7 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     args  = cf->args;
     value = cf->args->elts;
+    gmcf->filter = 1;
 
     i = 1;
 
@@ -833,7 +920,6 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
             goto failed;
         }
     }
-
     
     gm_cmd = ngx_gm_commands;
     rc = NGX_ERROR;
@@ -894,6 +980,163 @@ failed:
     return NGX_CONF_ERROR;
 }
 
+static ngx_int_t
+ngx_http_gm_parse_style(ngx_conf_t *cf, ngx_http_request_t *r, ngx_str_t *value, void *conf)
+{
+    ngx_conf_t                         style;
+    ngx_conf_file_t                    conf_file;
+    ngx_buf_t                          b;
+    
+    if (value->len == 0) {
+        return NGX_OK;
+    }
+
+    ngx_memzero(&conf_file, sizeof(ngx_conf_file_t));
+
+    ngx_memzero(&b, sizeof(ngx_buf_t));
+
+    b.start = value->data;
+    b.pos = value->data;
+    b.last = value->data + value->len;
+    b.end = b.last;
+    b.temporary = 1;
+
+    conf_file.file.fd = NGX_INVALID_FILE;
+    conf_file.file.name.data = NULL;
+    conf_file.line = 0;
+
+    if (cf != NULL) {
+        style = *cf;
+    } else {
+        style.args = ngx_array_create(r->pool, 10, sizeof(ngx_str_t));
+        if (style.args == NULL) {
+            return NGX_ERROR;
+        }
+        style.pool = r->pool;
+    }
+    style.conf_file = &conf_file;
+    style.conf_file->buffer = &b;
+
+    style.handler = ngx_http_gm_gm;
+    style.handler_conf = conf;
+
+    if (ngx_conf_parse(&style, NULL) != NGX_CONF_OK) {
+        return NGX_ERROR;
+    }
+
+    return NGX_OK;
+}
+
+
+static char *
+ngx_http_gm_style(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    ngx_http_gm_conf_t                *gmcf = conf;
+
+    ngx_http_complex_value_t           cv;
+    ngx_http_compile_complex_value_t   ccv;
+    
+    ngx_str_t                         *value;
+
+    dd("entering");
+
+    /* compile style variable */
+    gmcf->filter = 1;
+    value = (ngx_str_t *)cf->args->elts + 1;
+
+    ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
+
+    ccv.cf = cf;
+    ccv.value = value;
+    ccv.complex_value = &cv;
+
+    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+        return NGX_CONF_ERROR;
+    }
+
+    if (cv.lengths != NULL) {
+        gmcf->style_cv = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
+        if (gmcf->style_cv == NULL) {
+            return NGX_CONF_ERROR;
+        }
+
+        *gmcf->style_cv = cv;
+        return NGX_CONF_OK;
+    }
+    
+    /* parse config */
+    if (ngx_http_gm_parse_style(cf, NULL, value, conf) != NGX_OK) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "gm filter: style \"%V\" parse error",
+                value);
+        return NGX_CONF_ERROR;
+    }
+    return NGX_CONF_OK;
+}
+
+static ngx_uint_t
+ngx_http_gm_filter_value(ngx_str_t *value)
+{
+    ngx_int_t  n;
+
+    if (value->len == 1 && value->data[0] == '-') {
+        return (ngx_uint_t) -1;
+    }
+
+    n = ngx_atoi(value->data, value->len);
+
+    if (n > 0) {
+        return (ngx_uint_t) n;
+    }
+
+    return 0;
+}
+
+static char *
+ngx_http_gm_quality(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf)
+{
+    ngx_http_gm_conf_t                *gmcf = conf;
+
+    ngx_str_t                         *value;
+    ngx_int_t                          n;
+    ngx_http_complex_value_t           cv;
+    ngx_http_compile_complex_value_t   ccv;
+
+    gmcf->filter = 1;
+    value = cf->args->elts;
+
+    ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
+
+    ccv.cf = cf;
+    ccv.value = &value[1];
+    ccv.complex_value = &cv;
+
+    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+        return NGX_CONF_ERROR;
+    }
+
+    if (cv.lengths == NULL) {
+        n = ngx_http_gm_filter_value(&value[1]);
+
+        if (n <= 0) {
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                               "invalid value \"%V\"", &value[1]);
+            return NGX_CONF_ERROR;
+        }
+
+        gmcf->image_quality = (ngx_uint_t) n;
+
+    } else {
+        gmcf->qcv = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
+        if (gmcf->qcv == NULL) {
+            return NGX_CONF_ERROR;
+        }
+
+        *gmcf->qcv = cv;
+    }
+
+    return NGX_CONF_OK;
+}
 
 static ngx_int_t
 ngx_http_gm_init_worker(ngx_cycle_t *cycle)

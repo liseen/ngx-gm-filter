@@ -83,7 +83,26 @@ Content-Length: 2511
 
 
 
-=== TEST 5: crop with variable, geometry error
+=== TEST 5: crop relative to Gravity 
+--- config eval
+<<EOF;
+    location /crop {
+         set \$crop "100x100";
+         alias $FindBin::Bin/data;
+         gm crop \$crop -gravity Center;
+         gm_image_quality 85;
+         gm_buffer 16M;
+    }
+EOF
+--- request
+GET /crop/1024_768.jpg
+--- response_headers
+Content-Type: image/jpeg
+Content-Length: 1260
+
+
+
+=== TEST 6: crop with variable, geometry error
 --- config eval
 <<EOF;
     location /crop {
@@ -102,7 +121,7 @@ format error
 
 
 
-=== TEST 6: crop with geometry not contain image
+=== TEST 7: crop with geometry not contain image
 --- config eval
 <<EOF;
     location /crop {

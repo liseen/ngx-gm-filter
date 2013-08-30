@@ -81,9 +81,15 @@ typedef struct {
 /* gm conf */
 typedef struct {
     ngx_array_t                 *cmds;          /* gm command info list */
-    size_t                       buffer_size;
 
-    size_t                       image_quality;
+    ngx_flag_t                  filter;         /* gm_filter */
+
+    size_t                       buffer_size;   /* gm_buffer */
+
+    ngx_http_complex_value_t    *style_cv;      /* gm_style */
+      
+    ngx_http_complex_value_t    *qcv;           /* gm_quality */
+    ngx_uint_t                   image_quality;
 } ngx_http_gm_conf_t;
 
 /* gm context */
@@ -104,5 +110,6 @@ ngx_int_t ngx_http_gm_get_geometry_value(ngx_conf_t *conf, ngx_str_t *value, ngx
 
 u_char* ngx_http_gm_get_str_value(ngx_http_request_t *r, ngx_http_complex_value_t *cv, ngx_str_t *val);
 
+extern MagickExport GravityType StringToGravityType(const char *option);
 
 #endif /* NGX_HTTP_GM_FILTER_MODULE_H */

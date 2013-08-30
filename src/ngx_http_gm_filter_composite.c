@@ -1,6 +1,5 @@
 #include "ngx_http_gm_filter_module.h"
 
-extern MagickExport GravityType StringToGravityType(const char *option);
 
 typedef struct _CompositeOptions {
     char geometry[MaxTextExtent];
