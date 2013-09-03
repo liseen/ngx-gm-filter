@@ -30,6 +30,9 @@ static char *ngx_http_gm_merge_conf(ngx_conf_t *cf, void *parent,
 static char *ngx_http_gm_quality(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 
+static char *
+ngx_http_gm_statuses(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+
 static char *ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 
@@ -136,6 +139,13 @@ static ngx_command_t  ngx_http_gm_commands[] = {
       offsetof(ngx_http_gm_conf_t, filter),
       NULL },
 
+    { ngx_string("gm_filter_statuses"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
+      ngx_http_gm_statuses,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+
     { ngx_string("gm"),
       NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_http_gm_gm,
@@ -217,16 +227,14 @@ static ngx_int_t
 ngx_http_gm_header_filter(ngx_http_request_t *r)
 {
     off_t                          len;
+    ngx_uint_t                     *sp; /* status pointer */
     ngx_http_gm_ctx_t   *ctx;
     ngx_http_gm_conf_t  *conf;
-
-    if (r->headers_out.status == NGX_HTTP_NOT_MODIFIED) {
-        return ngx_http_next_header_filter(r);
-    }
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_gm_module);
 
     if (ctx) {
+        dd("gm filter: image filter bypass because of ctx exist, %.*s", (int) r->uri.len, r->uri.data);
         ngx_http_set_ctx(r, NULL, ngx_http_gm_module);
         return ngx_http_next_header_filter(r);
     }
@@ -235,6 +243,35 @@ ngx_http_gm_header_filter(ngx_http_request_t *r)
 
     if (!conf->filter) {
         return ngx_http_next_header_filter(r);
+    }
+
+    if (conf->filter_statuses != NULL) {
+
+        sp = (ngx_uint_t *) conf->filter_statuses;
+
+        while (r->headers_out.status < *sp) {
+            sp++;
+        }
+
+        if (*sp == 0 || r->headers_out.status > *sp) {
+            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                    "gm filter: image filter bypassed because of unmatched "
+                    "status code %ui with gm_filter_statuses",
+                    r->headers_out.status);
+
+            return ngx_http_next_header_filter(r);
+        }
+
+    } else {
+
+        if (r->headers_out.status != NGX_HTTP_OK) {
+            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                    "gm filter: image filter bypassed because of unmatched status "
+                    "code %i (only 200 are accepted by "
+                    "default)", r->headers_out.status);
+
+            return ngx_http_next_header_filter(r);
+        }
     }
 
     if (r->headers_out.content_type.len
@@ -311,6 +348,8 @@ ngx_http_gm_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
 
         if (ctx->type == NGX_HTTP_GM_IMAGE_NONE) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "gm filter: image test return none");
             return ngx_http_filter_finalize_request(r,
                                               &ngx_http_gm_module,
                                               NGX_HTTP_UNSUPPORTED_MEDIA_TYPE);
@@ -774,6 +813,11 @@ ngx_http_gm_merge_conf(ngx_conf_t *cf, void *parent, void *child)
             conf->qcv = prev->qcv;
         }
     }
+
+    if (conf->filter_statuses == NULL) {
+        conf->filter_statuses = prev->filter_statuses;
+    }
+    
     
     return NGX_CONF_OK;
 }
@@ -1134,6 +1178,66 @@ ngx_http_gm_quality(ngx_conf_t *cf, ngx_command_t *cmd,
 
         *gmcf->qcv = cv;
     }
+
+    return NGX_CONF_OK;
+}
+
+ngx_int_t
+ngx_http_gm_cmp_int(const void *one, const void *two)
+{
+    const ngx_int_t           *a = one;
+    const ngx_int_t           *b = two;
+
+    return (*a < *b);
+}
+
+static char *
+ngx_http_gm_statuses(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    ngx_http_gm_conf_t                *gmcf = conf;
+
+    ngx_uint_t       i, n;
+    ngx_int_t        status;
+    ngx_str_t       *value;
+
+    value = cf->args->elts;
+
+    if (gmcf->filter_statuses) {
+        return "is duplicate";
+    }
+
+    n = cf->args->nelts - 1;
+
+    gmcf->filter_statuses = ngx_pnalloc(cf->pool, (n + 1) * sizeof(ngx_int_t));
+    if (gmcf->filter_statuses == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    for (i = 1; i <= n; i++) {
+        status = ngx_atoi(value[i].data, value[i].len);
+        if (status == NGX_ERROR) {
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                    "status code \"%V\" is an invalid number",
+                    &value[i]);
+
+            return NGX_CONF_ERROR;
+        }
+
+        if (status < 0) {
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                    "status code \"%V\" is not a positive number",
+                    &value[i]);
+
+            return NGX_CONF_ERROR;
+        }
+
+        gmcf->filter_statuses[i - 1] = status;
+    }
+
+    gmcf->filter_statuses[i - 1] = 0;
+
+    ngx_sort(gmcf->filter_statuses, n, sizeof(ngx_int_t),
+            ngx_http_gm_cmp_int);
 
     return NGX_CONF_OK;
 }

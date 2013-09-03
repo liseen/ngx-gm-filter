@@ -15,71 +15,71 @@ run_tests();
 
 __DATA__
 
-=== TEST 1: no resize
+=== TEST 1: no sample
 --- config eval
 <<EOF;
-    location /resize {
+    location /sample {
          alias $FindBin::Bin/data;
     }
 EOF
 --- request
-GET /resize/1024_768.jpg
+GET /sample/1024_768.jpg
 --- response_headers
 Content-Type: image/jpeg
 Content-Length: 597491
 
 
 
-=== TEST 2: resize 200x100
+=== TEST 2:  200x100
 --- config eval
 <<EOF;
-    location /resize {
+    location /sample {
          alias $FindBin::Bin/data;
-         gm resize 200x100;
+         gm sample 200x100;
          gm_image_quality 85;
     }
 EOF
 --- request
-GET /resize/1024_768.jpg
+GET /sample/1024_768.jpg
 --- response_headers
 Content-Type: image/jpeg
-Content-Length: 5221
+Content-Length: 5975
 
 
 
-=== TEST 3: resize 100x100>
+=== TEST 3: sample 100x100>
 --- config eval
 <<EOF;
-    location /resize {
+    location /sample {
          alias $FindBin::Bin/data;
-         gm resize 100x100>;
+         gm sample 100x100>;
          gm_image_quality 85;
     }
 EOF
 --- request
-GET /resize/1024_768.jpg
+GET /sample/1024_768.jpg
 --- response_headers
 Content-Type: image/jpeg
-Content-Length: 3319
+Content-Length: 3870
 
 
 
-=== TEST 4: resize with variable
+=== TEST 4: sample with variable
 --- config eval
 <<EOF;
-    location /resize {
-         set \$resize "100x100>";
+    location /sample {
+         set \$sample "100x100>";
          alias $FindBin::Bin/data;
-         gm resize \$resize;
+         gm sample \$sample;
          gm_image_quality 85;
          gm_buffer 16M;
     }
 EOF
 --- request
-GET /resize/1024_768.jpg
+GET /sample/1024_768.jpg
 --- response_headers
 Content-Type: image/jpeg
-Content-Length: 3319
+Content-Length: 3870
 
 
 

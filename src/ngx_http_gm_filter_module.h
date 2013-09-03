@@ -83,6 +83,7 @@ typedef struct {
     ngx_array_t                 *cmds;          /* gm command info list */
 
     ngx_flag_t                  filter;         /* gm_filter */
+    ngx_int_t                   *filter_statuses;
 
     size_t                       buffer_size;   /* gm_buffer */
 
@@ -101,7 +102,6 @@ typedef struct {
 
     ngx_uint_t                   phase;
     ngx_uint_t                   type;
-    ngx_uint_t                   force;
 } ngx_http_gm_ctx_t;
 
 extern ngx_module_t ngx_http_gm_module;
