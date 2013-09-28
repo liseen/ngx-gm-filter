@@ -18,7 +18,6 @@ static ngx_uint_t ngx_http_gm_filter_value(ngx_str_t *value);
 
 static void ngx_http_gm_image_length(ngx_http_request_t *r,
     ngx_buf_t *b);
-static ngx_buf_t *ngx_http_gm_image_json(ngx_http_request_t *r,  Image *image);
 
 static ngx_buf_t * ngx_http_gm_image_run_commands(ngx_http_request_t *r,
     ngx_http_gm_ctx_t *ctx);
@@ -47,6 +46,12 @@ static ngx_int_t ngx_http_gm_parse_style(ngx_conf_t *cf, ngx_http_request_t *r, 
 
 /* parse geometry option */
 static ngx_int_t ngx_http_gm_parse_geometry(ngx_conf_t *cf, ngx_array_t *args, ngx_uint_t start, void **option);
+
+/* image info json */
+ngx_buf_t *ngx_http_gm_image_json(ngx_http_request_t *r,  Image *image);
+
+/* auto-orient */
+ngx_int_t gm_auto_orient_image(ngx_http_request_t *r, void *option, Image **image);
 
 /* resize */
 ngx_int_t gm_resize_image(ngx_http_request_t *r, void *option, Image **image);
@@ -78,6 +83,7 @@ ngx_int_t composite_image(ngx_http_request_t *r, void *option, Image **image);
 
 /* gm command */
 static ngx_http_gm_command_t ngx_gm_commands[] = {
+    /* empty command must first one */
     { ngx_string("empty"),
       NULL,
       NULL,
@@ -91,6 +97,11 @@ static ngx_http_gm_command_t ngx_gm_commands[] = {
     { ngx_string("convert"),
       convert_image,
       parse_convert_options,
+      NULL },
+
+    { ngx_string("auto-orient"),
+      gm_auto_orient_image,
+      NULL,
       NULL },
 
     { ngx_string("resize"),
@@ -241,7 +252,8 @@ ngx_http_gm_header_filter(ngx_http_request_t *r)
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_gm_module);
 
-    if (!conf->filter) {
+    /* gm filter disabled or not config gm command */
+    if (!conf->filter || !conf->cmds || conf->cmds->nelts == 0) {
         return ngx_http_next_header_filter(r);
     }
 
@@ -712,46 +724,6 @@ failed1:
     return NULL;
 }
 
-static ngx_buf_t *
-ngx_http_gm_image_json(ngx_http_request_t *r,  Image *image)
-{
-    size_t      len;
-    ngx_buf_t  *b;
-
-    b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
-    if (b == NULL) {
-        return NULL;
-    }
-
-    b->memory = 1;
-    b->last_buf = 1;
-
-    ngx_http_clean_header(r);
-
-    r->headers_out.status = NGX_HTTP_OK;
-    ngx_str_set(&r->headers_out.content_type, "application/json");
-    r->headers_out.content_type_lowcase = NULL;
-
-    len = sizeof("{ \"img\" : "
-                 "{ \"width\": , \"height\": , \"type\": \"jpeg\" } }" CRLF) - 1
-          + 2 * NGX_SIZE_T_LEN;
-
-    b->pos = ngx_pnalloc(r->pool, len);
-    if (b->pos == NULL) {
-        return NULL;
-    }
-
-    b->last = ngx_sprintf(b->pos,
-                          "{ \"img\" : "
-                                       "{ \"width\": %uz,"
-                                        " \"height\": %uz,"
-                                        " \"type\": \"%s\" } }" CRLF,
-                          image->columns,image->rows,
-                          image->magick);
-
-    return b;
-}
-
 static void
 ngx_http_gm_image_cleanup(void *out_blob)
 {
@@ -801,7 +773,7 @@ ngx_http_gm_merge_conf(ngx_conf_t *cf, void *parent, void *child)
         conf->cmds = prev->cmds;
     }
 
-    ngx_conf_merge_value(conf->filter, prev->filter, 0);
+    ngx_conf_merge_value(conf->filter, prev->filter, 1);
     ngx_conf_merge_size_value(conf->buffer_size, prev->buffer_size,
                               4 * 1024 * 1024);
 
@@ -931,6 +903,32 @@ ngx_http_gm_get_str_value(ngx_http_request_t *r, ngx_http_complex_value_t *cv,
     }
 }
 
+/* add empty command to trigger image process */
+static ngx_int_t
+ngx_http_add_empty_cmd(ngx_conf_t *cf, void *conf)
+{
+    ngx_str_t                         *value;
+    ngx_http_gm_command_info_t        *cmd_info;
+    ngx_http_gm_conf_t                *gmcf = conf;
+
+    value = cf->args->elts;
+
+    if (gmcf->cmds == NULL) {
+        gmcf->cmds = ngx_array_create(cf->pool, 4, sizeof(ngx_http_gm_command_info_t));
+        if (gmcf->cmds == NULL) {
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "gm filter: alloc failed \"%V\"", &value[1]);
+            return NGX_ERROR;
+        }
+    }
+
+    /* don't nee add empty command */
+    if (gmcf->cmds->nelts == 0) {
+        cmd_info = ngx_array_push(gmcf->cmds);
+        cmd_info->command = ngx_gm_commands;
+    }
+    return NGX_OK;
+}
+
 static char *
 ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
@@ -950,7 +948,6 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     args  = cf->args;
     value = cf->args->elts;
-    gmcf->filter = 1;
 
     i = 1;
 
@@ -1011,14 +1008,14 @@ ngx_http_gm_gm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     return NGX_CONF_OK;
 
 alloc_failed:
-    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "alloc failed \"%V\"",
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "gm filter: alloc failed \"%V\"",
                        &value[i]);
 
     return NGX_CONF_ERROR;
 
 failed:
 
-    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid parameter for command, \"%V\"",
+    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "gm filter: invalid parameter for command, \"%V\"",
                        &value[i]);
 
     return NGX_CONF_ERROR;
@@ -1085,7 +1082,6 @@ ngx_http_gm_style(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     dd("entering");
 
     /* compile style variable */
-    gmcf->filter = 1;
     value = (ngx_str_t *)cf->args->elts + 1;
 
     ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
@@ -1105,6 +1101,10 @@ ngx_http_gm_style(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         }
 
         *gmcf->style_cv = cv;
+
+        /* add empty command */
+        ngx_http_add_empty_cmd(cf, conf);
+
         return NGX_CONF_OK;
     }
     
@@ -1146,7 +1146,6 @@ ngx_http_gm_quality(ngx_conf_t *cf, ngx_command_t *cmd,
     ngx_http_complex_value_t           cv;
     ngx_http_compile_complex_value_t   ccv;
 
-    gmcf->filter = 1;
     value = cf->args->elts;
 
     ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
@@ -1159,12 +1158,15 @@ ngx_http_gm_quality(ngx_conf_t *cf, ngx_command_t *cmd,
         return NGX_CONF_ERROR;
     }
 
+    /* add empty command */
+    ngx_http_add_empty_cmd(cf, conf);
+
     if (cv.lengths == NULL) {
         n = ngx_http_gm_filter_value(&value[1]);
 
         if (n <= 0) {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                               "invalid value \"%V\"", &value[1]);
+                               "gm filter: invalid value \"%V\"", &value[1]);
             return NGX_CONF_ERROR;
         }
 
