@@ -50,6 +50,9 @@ static ngx_int_t ngx_http_gm_parse_geometry(ngx_conf_t *cf, ngx_array_t *args, n
 /* image info json */
 ngx_buf_t *ngx_http_gm_image_json(ngx_http_request_t *r,  Image *image);
 
+/* image exif json */
+ngx_buf_t *ngx_http_gm_image_exif_json(ngx_http_request_t *r,  Image *image);
+
 /* auto-orient */
 ngx_int_t gm_auto_orient_image(ngx_http_request_t *r, void *option, Image **image);
 
@@ -93,6 +96,11 @@ static ngx_http_gm_command_t ngx_gm_commands[] = {
       NULL,
       NULL,
       ngx_http_gm_image_json},
+
+    { ngx_string("exif"),
+      NULL,
+      NULL,
+      ngx_http_gm_image_exif_json},
 
     { ngx_string("convert"),
       convert_image,
@@ -171,7 +179,6 @@ static ngx_command_t  ngx_http_gm_commands[] = {
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
       NULL },
-
 
     { ngx_string("gm_image_quality"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
