@@ -21,7 +21,7 @@ ngx_http_gm_image_json(ngx_http_request_t *r,  Image *image)
     ngx_str_set(&r->headers_out.content_type, "application/json");
     r->headers_out.content_type_lowcase = NULL;
 
-    len = sizeof("{ \"Width\": , \"Height\": , \"FileSize\": , \"Orientation\": , \"Format\": \"jpeg\" } }" CRLF) - 1
+    len = sizeof("{ \"Width\": , \"Height\": , \"FileSize\": , \"Orientation\": , \"Format\": \"jpeg\" }" CRLF) - 1
           + 4 * NGX_SIZE_T_LEN;
 
     b->pos = ngx_pnalloc(r->pool, len);
@@ -109,6 +109,9 @@ ngx_http_gm_image_exif_json(ngx_http_request_t *r,  Image *image)
                 "gm filter: alloc exif info failed.");
         return NULL;
     }
+
+    len = sizeof("{ \"Width\": , \"Height\": , \"FileSize\": , \"Format\": \"jpeg\", }" CRLF) - 1
+          + 3 * NGX_SIZE_T_LEN;
     
     profile_iterator=AllocateImageProfileIterator(image);
     while(NextImageProfile(profile_iterator,&profile_name,&profile_info,
@@ -163,7 +166,7 @@ ngx_http_gm_image_exif_json(ngx_http_request_t *r,  Image *image)
     ngx_str_set(&r->headers_out.content_type, "application/json");
     r->headers_out.content_type_lowcase = NULL;
 
-    len += 4 + 2 * NGX_SIZE_T_LEN;
+    //len += 4 + 2 * NGX_SIZE_T_LEN;
 
     b->pos = ngx_pnalloc(r->pool, len);
     if (b->pos == NULL) {
@@ -173,7 +176,27 @@ ngx_http_gm_image_exif_json(ngx_http_request_t *r,  Image *image)
     }
 
     /* to json */
-    b->last = ngx_sprintf(b->pos, "{ ");
+    if (attris->nelts > 0) {
+        b->last = ngx_sprintf(b->pos,
+                "{ \"Width\": %uz,"
+                " \"Height\": %uz,"
+                " \"FileSize\": %uz,"
+                " \"Format\": \"%s\", ",
+                image->columns,image->rows,
+                GetBlobSize(image), image->magick);
+    } else {
+        b->last = ngx_sprintf(b->pos,
+                "{ \"Width\": %uz,"
+                " \"Height\": %uz,"
+                " \"FileSize\": %uz,"
+                " \"Format\": \"%s\" }" CRLF,
+                image->columns,image->rows,
+                GetBlobSize(image), 
+                image->magick);
+        return b; 
+    }
+
+    //b->last = ngx_sprintf(b->pos, "{ ");
     for (i = 0,  attri = attris->elts; attris->nelts > 0 && (i < attris->nelts - 1); ++i, attri++) {
         if (ngx_strcmp(attri->key->type, EXIF_KEY_STRING) == 0) {
             b->last = ngx_sprintf(b->last, "\"%V\": \"%V\",", &attri->key->name, &attri->value);

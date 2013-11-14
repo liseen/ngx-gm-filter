@@ -29,8 +29,8 @@ GET /identify/ginfo.jpg
 
 --- response_headers
 Content-Type: application/json
-Content-Length: 489
---- response_body_like eval: '{ "Make": "Apple","Model": "iPhone 4S","Orientation": 1,"DateTimeOriginal": "2013:08:10 11:40:05","FNumber": "12/5","FocalLength": "107/25","ExposureTime": "1/986","ISOSpeedRatings": 50,"FocalLengthIn35mmFilm": 35,"GPSInfo": "594","GPSLatitudeRef": "N","GPSLatitude": "42/1,3164/100,0/1","GPSLongitudeRef": "E","GPSLongitude": "117/1,1380/100,0/1","GPSAltitudeRef": ".","GPSAltitude": "1535/1","GPSTimeStamp": "3/1,40/1,437/100","GPSImgDirectionRef": "T","GPSImgDirection": "18089/613" }'
+Content-Length: 556
+--- response_body_like eval: '{ "Width": 905, "Height": 678, "FileSize": 303425, "Format": "JPEG", "Make": "Apple","Model": "iPhone 4S","Orientation": 1,"DateTimeOriginal": "2013:08:10 11:40:05","FNumber": "12/5","FocalLength": "107/25","ExposureTime": "1/986","ISOSpeedRatings": 50,"FocalLengthIn35mmFilm": 35,"GPSInfo": "594","GPSLatitudeRef": "N","GPSLatitude": "42/1,3164/100,0/1","GPSLongitudeRef": "E","GPSLongitude": "117/1,1380/100,0/1","GPSAltitudeRef": ".","GPSAltitude": "1535/1","GPSTimeStamp": "3/1,40/1,437/100","GPSImgDirectionRef": "T","GPSImgDirection": "18089/613" }'
 
 
 
@@ -47,8 +47,8 @@ GET /identify/1024_768.jpg
 
 --- response_headers
 Content-Type: application/json
-Content-Length: 6
---- response_body_like eval: '{  }'
+Content-Length: 72
+--- response_body_like eval: '{ "Width": 1024, "Height": 768, "FileSize": 597491, "Format": "JPEG" }'
 
 
 
