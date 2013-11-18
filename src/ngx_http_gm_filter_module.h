@@ -95,10 +95,10 @@ typedef struct {
 
 /* gm context */
 typedef struct {
-    u_char                      *image_blob;
+    u_char                      *image_blob;    /* image blob for read */
     u_char                      *last;
 
-    size_t                       length;
+    size_t                       length;        /* image buffer alloc size */
 
     ngx_uint_t                   phase;
     ngx_uint_t                   type;

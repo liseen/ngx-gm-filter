@@ -586,6 +586,7 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
     ngx_http_gm_conf_t  *gmcf;
 
     u_char         *image_blob;
+    size_t          image_size;
 
     ImageInfo      *image_info;
     Image          *image;
@@ -609,6 +610,7 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
     GetExceptionInfo(&exception);
 
     image_blob = ctx->image_blob;
+    image_size = ctx->last - image_blob;
 
     image_info = CloneImageInfo((ImageInfo *) NULL);
 
@@ -616,7 +618,7 @@ ngx_http_gm_image_run_commands(ngx_http_request_t *r, ngx_http_gm_ctx_t *ctx)
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "gm filter: blob to image");
 
-    image = BlobToImage(image_info, image_blob, ctx->length, &exception);
+    image = BlobToImage(image_info, image_blob, image_size, &exception);
     if (image == NULL) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "gm filter: blob to image failed, "

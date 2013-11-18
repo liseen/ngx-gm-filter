@@ -1,8 +1,8 @@
 #!/bin/bash
 script_dir=$(dirname $0)
 root=$(readlink -f $script_dir/..)
-#testfile=${1:-$root/t/*.t}
-testfile=${1:-$root/t/008-identify.t}
+testfile=${1:-$root/t/*.t}
+#testfile=${1:-$root/t/008-identify.t}
 cd $root
 $script_dir/reindex $testfile
 export PATH=/opt/nginx/sbin:$PATH
