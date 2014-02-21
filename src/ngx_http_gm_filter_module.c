@@ -56,6 +56,9 @@ ngx_buf_t *ngx_http_gm_image_exif_json(ngx_http_request_t *r,  Image *image);
 /* auto-orient */
 ngx_int_t gm_auto_orient_image(ngx_http_request_t *r, void *option, Image **image);
 
+/* unsharp */
+ngx_int_t gm_unsharp_image(ngx_http_request_t *r, void *option, Image **image);
+
 /* resize */
 ngx_int_t gm_resize_image(ngx_http_request_t *r, void *option, Image **image);
 
@@ -110,6 +113,11 @@ static ngx_http_gm_command_t ngx_gm_commands[] = {
     { ngx_string("auto-orient"),
       gm_auto_orient_image,
       NULL,
+      NULL },
+
+    { ngx_string("unsharp"),
+      gm_unsharp_image,
+      ngx_http_gm_parse_geometry,
       NULL },
 
     { ngx_string("resize"),
