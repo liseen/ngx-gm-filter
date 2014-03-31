@@ -323,6 +323,7 @@ ngx_http_gm_header_filter(ngx_http_request_t *r)
     }
 
     ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_gm_ctx_t));
+    dd("gm filter: image filter create, %.*s", (int) r->uri.len, r->uri.data);
     if (ctx == NULL) {
         return NGX_ERROR;
     }
