@@ -2,6 +2,7 @@ ngx-gm-filter
 =============
 
 ngx-gm-filter - Another image filter based GraphicsMagick.
+[![Analytics](https://ga-beacon.appspot.com/UA-5174134-2/ngx-gm-filter/readme)](https://github.com/igrigorik/ga-beacon)
 
 Status
 ======
