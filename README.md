@@ -2,6 +2,7 @@ ngx-gm-filter
 =============
 
 ngx-gm-filter - Another image filter based GraphicsMagick.
+[![Analytics](https://ga-beacon.appspot.com/UA-5174134-2/ngx-gm-filter/readme)](https://github.com/igrigorik/ga-beacon)
 
 Status
 ======
@@ -61,18 +62,28 @@ gm_image_quality
 
 gm
 --------------
-**syntax:** *gm_[convert|composite]_ options*
+**syntax:** *gm_[resize|crop|rotate|composite]_ options*
 
 **default:** *none*
 
 **context:** *location*
 
+gm_style
+--------------
+**syntax:** *gm_style style*
+
+**default:** *none*
+
+**context:** *location*
+
+The *style* is the combine of gm commands, similar to nginx command flag "-g".
+
 gm samples
 --------------
 
 ```
-gm convert -resize 100x200!
-gm convert -resize 100x200c
+gm resize 100x200!
+gm resize 100x200
 ```
 
 

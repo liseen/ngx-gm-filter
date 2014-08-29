@@ -1,4 +1,6 @@
 .svn
+*.o
+Makefile
 t/servroot/
 *~
 *.swp
