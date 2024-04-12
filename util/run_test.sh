@@ -1,10 +1,15 @@
 #!/bin/bash
 script_dir=$(dirname $0)
 root=$(readlink -f $script_dir/..)
-testfile=${1:-$root/t/*.t $root/t/*/*.t}
+testfile=${1:-$root/t/*.t}
+#testfile=${1:-$root/t/008-identify.t}
 cd $root
 $script_dir/reindex $testfile
-export PATH=$root/work/sbin:$PATH
+export PATH=/opt/nginx/sbin:$PATH
+#export TEST_NGINX_USE_VALGRIND=1
+#export TEST_NGINX_SLEEP=5
 killall nginx
-prove -I$root/../test-nginx/lib $testfile
+
+echo "start test.........."
+prove -v $testfile
 
